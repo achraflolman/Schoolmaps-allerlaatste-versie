@@ -29,11 +29,11 @@ if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
 
-// Initialiseer Firebase-services
+// --- INITIALISEER FIREBASE SERVICES EN EXPORTEER ZE ---
+// Deze code moet NA firebase.initializeApp() komen om de "Component not registered" fout te voorkomen.
 export const auth = firebase.auth();
 export const storage = firebase.storage();
 export const EmailAuthProvider = firebase.auth.EmailAuthProvider;
-
 
 // Initialiseer Firestore met v8 compat API
 const db = firebase.firestore();
