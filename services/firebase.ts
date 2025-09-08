@@ -1,14 +1,10 @@
 
-import 'firebase/compat/app';
+
+import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
 import 'firebase/compat/storage';
 import 'firebase/compat/app-check';
-
-// The UMD scripts from gstatic CDN are not true ES modules and instead attach
-// the `firebase` object to the global `window` scope. This is the correct way
-// to access it in this module-based environment.
-const firebase = (window as any).firebase;
 
 // ##################################################################
 // #  IMPORTANT: REPLACE WITH YOUR ACTUAL FIREBASE CONFIGURATION    #
