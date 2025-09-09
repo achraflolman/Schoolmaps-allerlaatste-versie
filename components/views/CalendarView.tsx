@@ -1,7 +1,7 @@
-
-import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, PlusCircle, Edit, Trash2, Loader2 } from 'lucide-react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { ChevronLeft, ChevronRight, PlusCircle, Edit, Trash2, Loader2, Sparkles, List, LayoutGrid } from 'lucide-react';
 import { db, appId, Timestamp } from '../../services/firebase';
+import { GoogleGenAI, Type } from '@google/genai';
 import type { CalendarEvent, AppUser, ModalContent } from '../../types';
 
 interface CalendarViewProps {
@@ -24,10 +24,334 @@ const toLocalDateString = (date: Date): string => {
 };
 
 
+// --- AI Importer Modal Component ---
+interface AIParsedEvent {
+    id: number;
+    title: string;
+    subject: string;
+    date: string; // YYYY-MM-DD
+    time: string; // HH:mm
+    description?: string;
+    type: 'test' | 'presentation' | 'homework' | 'oral' | 'other';
+}
+
+const AIImporterModal: React.FC<Omit<CalendarViewProps, 'userEvents'> & { onClose: () => void }> = ({ user, t, tSubject, getThemeClasses, showAppModal, userId, language, onClose }) => {
+    const [step, setStep] = useState<'input' | 'review'>('input');
+    const [inputText, setInputText] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [parsedEvents, setParsedEvents] = useState<AIParsedEvent[]>([]);
+    const [weeksToImport, setWeeksToImport] = useState(1);
+    const [selectedEventIds, setSelectedEventIds] = useState<number[]>([]);
+
+    const allUserSubjects = useMemo(() => {
+        return Array.from(new Set([...(user.selectedSubjects || []), ...(user.customSubjects || [])]));
+    }, [user]);
+
+    const handleAnalyze = async () => {
+        if (!inputText.trim()) return;
+        setIsLoading(true);
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const userSubjectsList = allUserSubjects.join(', ');
+            const todayString = new Date().toLocaleDateString(language, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            
+            const prompt = `Analyze the schedule text. The current date is ${todayString}.
+For each event, extract:
+1. "title": Short title. If "toets", "examen", or "proefwerk" is mentioned, make the title reflect a test.
+2. "subject": The school subject. This MUST be one of the following, pick the closest match: ${userSubjectsList}. If no clear match is found, return an empty string for the subject.
+3. "date": The specific date in YYYY-MM-DD format. Calculate this based on the current date and relative terms like "today", "tomorrow", "next week monday".
+4. "time": Start time in HH:mm format. Default to 09:00 if not specified. Assume events last 1 hour.
+5. "type": The event type. Must be one of 'test', 'presentation', 'homework', 'oral', 'other'. Infer this from keywords like "toets" (test), "opdracht" (homework), "presentatie" (presentation), "mondeling" (oral).
+6. "description": Optional extra details.
+
+User's schedule:
+---
+${inputText}
+---
+`;
+
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                title: { type: Type.STRING },
+                                subject: { type: Type.STRING },
+                                date: { type: Type.STRING },
+                                time: { type: Type.STRING },
+                                type: { type: Type.STRING },
+                                description: { type: Type.STRING }
+                            },
+                            required: ['title', 'subject', 'date', 'time', 'type']
+                        }
+                    }
+                }
+            });
+            
+            const jsonStr = response.text.trim();
+            const events = JSON.parse(jsonStr).map((e: Omit<AIParsedEvent, 'id'>, index: number) => ({ ...e, id: index }));
+            
+            if (events.length === 0) {
+                showAppModal({ text: t('ai_no_events_found') });
+            } else {
+                setParsedEvents(events);
+                setSelectedEventIds(events.map((e: AIParsedEvent) => e.id));
+                setStep('review');
+            }
+        } catch (error) {
+            console.error("AI Parsing Error:", error);
+            showAppModal({ text: t('ai_parsing_error') });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    const handleImport = async () => {
+        setIsLoading(true);
+        const batch = db.batch();
+        let eventsAddedCount = 0;
+
+        const eventsToImport = parsedEvents.filter(e => selectedEventIds.includes(e.id));
+
+        for (let week = 0; week < weeksToImport; week++) {
+            for (const event of eventsToImport) {
+                const targetDate = new Date(`${event.date}T${event.time}`);
+                if (isNaN(targetDate.getTime())) continue;
+
+                targetDate.setDate(targetDate.getDate() + (week * 7));
+
+                const startDate = Timestamp.fromDate(targetDate);
+                const endDate = Timestamp.fromDate(new Date(targetDate.getTime() + 60 * 60 * 1000)); // 1 hour duration
+                
+                let finalSubject = event.subject;
+                if (!allUserSubjects.includes(finalSubject)) {
+                    finalSubject = allUserSubjects[0] || 'algemeen'; // Fallback to first subject or general if none exist
+                }
+
+                const eventData = {
+                    title: event.title,
+                    description: event.description || '',
+                    type: event.type,
+                    subject: finalSubject,
+                    start: startDate,
+                    end: endDate,
+                    ownerId: userId,
+                    createdAt: Timestamp.now()
+                };
+                
+                const newEventRef = db.collection(`artifacts/${appId}/users/${userId}/calendarEvents`).doc();
+                batch.set(newEventRef, eventData);
+                eventsAddedCount++;
+            }
+        }
+        
+        try {
+            await batch.commit();
+            showAppModal({ text: t('import_success', { count: eventsAddedCount }) });
+            setTimeout(() => {
+                onClose();
+            }, 1500);
+        } catch (error) {
+            console.error("Import Error:", error);
+            showAppModal({ text: t('import_error') });
+            setIsLoading(false);
+        }
+    };
+    
+    const toggleEventSelection = (id: number) => {
+        setSelectedEventIds(prev => prev.includes(id) ? prev.filter(eid => eid !== id) : [...prev, id]);
+    };
+    
+    const eventsByDateGrouped = useMemo(() => {
+        return parsedEvents.reduce((acc, event) => {
+            (acc[event.date] = acc[event.date] || []).push(event);
+            return acc;
+        }, {} as { [key: string]: AIParsedEvent[] });
+    }, [parsedEvents]);
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 animate-fade-in p-4">
+            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl space-y-4 animate-scale-up max-h-[90vh] overflow-y-auto">
+                {step === 'input' && (
+                    <>
+                        <h3 className="text-xl font-bold">{t('ai_importer_title')}</h3>
+                        <p className="text-sm text-gray-600">{t('ai_importer_description')}</p>
+                        <textarea
+                            value={inputText}
+                            onChange={(e) => setInputText(e.target.value)}
+                            rows={8}
+                            className="w-full p-2 border rounded-lg"
+                            placeholder="e.g., Maandag 9:00-10:00 wiskunde, woensdag proefwerk geschiedenis om 13:00"
+                            disabled={isLoading}
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button type="button" onClick={onClose} className="py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">{t('cancel_button')}</button>
+                            <button onClick={handleAnalyze} disabled={isLoading} className={`py-2 px-4 rounded-lg text-white font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} w-48 flex justify-center items-center`}>
+                                {isLoading ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> {t('analyzing')}</> : t('analyze_button')}
+                            </button>
+                        </div>
+                    </>
+                )}
+                {step === 'review' && (
+                    <>
+                        <h3 className="text-xl font-bold">{t('review_schedule')}</h3>
+                        <div className="flex flex-wrap gap-4 items-center bg-gray-100 p-3 rounded-lg">
+                            <div className="flex items-center gap-2">
+                                <label className="font-semibold">{t('import_for_weeks')}:</label>
+                                <input type="number" value={weeksToImport} onChange={e => setWeeksToImport(Math.max(1, parseInt(e.target.value) || 1))} className="w-16 p-1 border rounded-md" />
+                                <span>{t('weeks')}</span>
+                            </div>
+                        </div>
+                        <div className="space-y-3 max-h-60 overflow-y-auto p-2 border rounded-md">
+                           {Object.keys(eventsByDateGrouped).sort().map(date => (
+                                <div key={date}>
+                                    <h4 className="font-bold capitalize">{new Date(date + 'T00:00:00').toLocaleDateString(language, { weekday: 'long', day: 'numeric', month: 'long' })}</h4>
+                                    <ul className="list-inside ml-2">
+                                        {eventsByDateGrouped[date].map((event) => (
+                                            <li key={event.id} className="text-sm flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedEventIds.includes(event.id)}
+                                                    onChange={() => toggleEventSelection(event.id)}
+                                                    className={`h-4 w-4 rounded ${getThemeClasses('text')} focus:ring-0`}
+                                                />
+                                                {event.time} - {event.title} ({tSubject(event.subject) || 'Vak Kiezen'}) - [{t(`event_${event.type}`)}]
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ))}
+                        </div>
+                         <div className="flex justify-between gap-2">
+                            <button type="button" onClick={() => setStep('input')} className="py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">{t('edit_text_button')}</button>
+                            <button onClick={handleImport} disabled={isLoading || selectedEventIds.length === 0} className={`py-2 px-4 rounded-lg text-white font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} w-48 flex justify-center items-center disabled:opacity-50`}>
+                                {isLoading ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> {t('importing')}</> : t('import_button')}
+                            </button>
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    )
+}
+
+
+const WeekGridView: React.FC<Omit<CalendarViewProps, 'userEvents'> & {
+    weekDays: Date[];
+    eventsForWeek: CalendarEvent[];
+    onEventClick: (event: CalendarEvent) => void;
+    onGridCellClick: (date: Date) => void;
+}> = ({
+    weekDays, eventsForWeek, t, getThemeClasses, tSubject, language, onEventClick, onGridCellClick
+}) => {
+    const START_HOUR = 7;
+    const END_HOUR = 22;
+    const timeSlots = Array.from({ length: (END_HOUR - START_HOUR) * 2 }, (_, i) => {
+        const hour = START_HOUR + Math.floor(i / 2);
+        const minute = i % 2 === 0 ? '00' : '30';
+        return `${hour.toString().padStart(2, '0')}:${minute}`;
+    });
+
+    const getEventPosition = (event: CalendarEvent) => {
+        const start = (event.start as any).toDate();
+        const end = (event.end as any).toDate();
+
+        let dayIndex = start.getDay();
+        if (dayIndex === 0) dayIndex = 7;
+        const column = dayIndex + 1;
+
+        const startMinutes = (start.getHours() * 60) + start.getMinutes();
+        const endMinutes = (end.getHours() * 60) + end.getMinutes();
+
+        const rowStart = Math.floor((startMinutes - (START_HOUR * 60)) / 30) + 2;
+        const rowEnd = Math.ceil((endMinutes - (START_HOUR * 60)) / 30) + 2;
+        
+        if (rowStart < 2 || rowEnd > timeSlots.length + 2 || rowStart >= rowEnd) return null;
+
+        return {
+            gridColumn: column,
+            gridRow: `${rowStart} / ${rowEnd}`,
+        };
+    };
+
+    return (
+        <div className="bg-white rounded-xl shadow-lg overflow-x-auto p-1">
+            <div
+                className="grid gap-px relative"
+                style={{
+                    gridTemplateColumns: 'auto repeat(7, minmax(120px, 1fr))',
+                    gridTemplateRows: `auto repeat(${timeSlots.length}, 3rem)`,
+                    backgroundColor: 'rgb(229 231 235)',
+                }}
+            >
+                {/* Header row: empty corner + days */}
+                <div className="bg-white sticky left-0 z-20"></div>
+                {weekDays.map(day => (
+                    <div key={day.toISOString()} className="bg-white p-2 text-center font-semibold sticky top-0 z-10">
+                        <div className="text-xs uppercase text-gray-500">{day.toLocaleDateString(language, { weekday: 'short' })}</div>
+                        <div className={`text-lg rounded-full w-8 h-8 flex items-center justify-center mx-auto ${day.toDateString() === new Date().toDateString() ? `${getThemeClasses('bg')} text-white` : ''}`}>
+                            {day.getDate()}
+                        </div>
+                    </div>
+                ))}
+
+                {/* Time slots and grid cells */}
+                {timeSlots.map((time, index) => (
+                    <React.Fragment key={time}>
+                        <div className="bg-white text-right pr-2 text-xs text-gray-500 sticky left-0 z-10 flex items-center justify-end">
+                           {time.endsWith(':00') && <span>{time}</span>}
+                        </div>
+                        {weekDays.map((day, dayIndex) => (
+                             <div
+                                key={`${day.toISOString()}-${time}`}
+                                className="bg-white hover:bg-gray-100 transition-colors"
+                                style={{ gridColumn: dayIndex + 2, gridRow: index + 2 }}
+                                onClick={() => {
+                                    const [hour, minute] = time.split(':');
+                                    const clickedDate = new Date(day);
+                                    clickedDate.setHours(parseInt(hour, 10), parseInt(minute, 10));
+                                    onGridCellClick(clickedDate);
+                                }}
+                            />
+                        ))}
+                    </React.Fragment>
+                ))}
+
+                {/* Events */}
+                {eventsForWeek.map(event => {
+                    const position = getEventPosition(event);
+                    if (!position) return null;
+                    
+                    return (
+                        <div
+                            key={event.id}
+                            style={{ ...position, zIndex: 5 }}
+                            onClick={() => onEventClick(event)}
+                            className={`m-px p-1.5 rounded-md text-white text-xs overflow-hidden cursor-pointer shadow-sm ${getThemeClasses('bg')} border-l-4 ${getThemeClasses('border')}`}
+                        >
+                            <p className="font-bold truncate">{event.title}</p>
+                            <p className="truncate">{tSubject(event.subject)}</p>
+                            <p className="opacity-80">{(event.start as any).toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})}</p>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+
 const CalendarView: React.FC<CalendarViewProps> = ({ userEvents, t, getThemeClasses, tSubject, language, showAppModal, userId, user }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [calendarViewMode, setCalendarViewMode] = useState<'list' | 'grid'>('list');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -84,6 +408,19 @@ const CalendarView: React.FC<CalendarViewProps> = ({ userEvents, t, getThemeClas
     });
     return eventsMap;
   }, [userEvents]);
+  
+  const eventsForCurrentWeek = useMemo(() => {
+    const weekStartMs = startOfWeek.getTime();
+    const weekEnd = new Date(startOfWeek);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    const weekEndMs = weekEnd.getTime();
+
+    return userEvents.filter(event => {
+        if (!event.start || !(event.start as any).toDate) return false;
+        const eventStartMs = (event.start as any).toDate().getTime();
+        return eventStartMs >= weekStartMs && eventStartMs < weekEndMs;
+    });
+  }, [userEvents, startOfWeek]);
 
   const openModal = (eventToEdit: CalendarEvent | null, dateForNew: Date | null = null) => {
     if (eventToEdit) {
@@ -104,8 +441,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ userEvents, t, getThemeClas
         setSubject(availableSubjects[0] || '');
         const initialDate = dateForNew || new Date();
         setEventDate(toLocalDateString(initialDate));
-        setStartTime('09:00');
-        setEndTime('10:00');
+        setStartTime(initialDate.toTimeString().substring(0,5));
+        setEndTime(new Date(initialDate.getTime() + 60*60*1000).toTimeString().substring(0,5));
     }
     setIsModalOpen(true);
   };
@@ -208,36 +545,73 @@ const CalendarView: React.FC<CalendarViewProps> = ({ userEvents, t, getThemeClas
       </div>
       
       <div className="space-y-4">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center flex-wrap gap-y-2">
             <h3 className="text-xl font-bold flex items-center gap-2">
-                {isSelectedDateToday && <span className={`text-sm font-semibold align-middle p-1 px-2 rounded-md ${getThemeClasses('bg')} text-white`}>{t('today')}</span>}
-                {selectedDate.toLocaleDateString(language, { weekday: 'long', day: 'numeric', month: 'long' })}
+                {isSelectedDateToday && calendarViewMode === 'list' && <span className={`text-sm font-semibold align-middle p-1 px-2 rounded-md ${getThemeClasses('bg')} text-white`}>{t('today')}</span>}
+                {calendarViewMode === 'list' && selectedDate.toLocaleDateString(language, { weekday: 'long', day: 'numeric', month: 'long' })}
             </h3>
-            <button type="button" onClick={() => openModal(null, selectedDate)} className={`flex items-center text-white font-bold py-2 px-4 rounded-lg transition-transform active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}>
-                <PlusCircle className="w-5 h-5 mr-2"/> {t('add_event')}
-            </button>
+            <div className="flex gap-2 items-center ml-auto">
+                 <div className="bg-gray-200 p-1 rounded-lg flex gap-1">
+                    <button
+                        onClick={() => setCalendarViewMode('list')}
+                        title="Lijstweergave"
+                        aria-label="Lijstweergave"
+                        className={`p-2 rounded-md transition-colors ${calendarViewMode === 'list' ? `bg-white shadow-sm ${getThemeClasses('text')}` : 'text-gray-500 hover:bg-white/50'}`}
+                    >
+                        <List className="w-5 h-5"/>
+                    </button>
+                    <button
+                        onClick={() => setCalendarViewMode('grid')}
+                        title="Weekweergave"
+                        aria-label="Weekweergave"
+                        className={`p-2 rounded-md transition-colors ${calendarViewMode === 'grid' ? `bg-white shadow-sm ${getThemeClasses('text')}` : 'text-gray-500 hover:bg-white/50'}`}
+                    >
+                        <LayoutGrid className="w-5 h-5"/>
+                    </button>
+                 </div>
+                 <button type="button" onClick={() => setIsAIModalOpen(true)} className={`flex items-center text-white font-bold p-2 sm:py-2 sm:px-4 rounded-lg transition-transform active:scale-95 bg-purple-500 hover:bg-purple-600`}>
+                    <Sparkles className="w-5 h-5 sm:mr-2"/> <span className="hidden sm:inline">{t('ai_importer_title')}</span>
+                </button>
+                <button type="button" onClick={() => openModal(null, selectedDate)} className={`flex items-center text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-transform active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}>
+                    <PlusCircle className="w-5 h-5 sm:mr-2"/> <span className="hidden sm:inline">{t('add_event')}</span>
+                </button>
+            </div>
         </div>
 
-        {userEvents.length === 0 && selectedDayEvents.length === 0 ? (
-            <p className="text-center text-gray-500 italic py-4">{t('no_events_day')}</p>
-        ) : selectedDayEvents.length === 0 ? (
-             <p className="text-center text-gray-500 italic py-4">{t('no_events_day')}</p>
+        {calendarViewMode === 'list' ? (
+            selectedDayEvents.length === 0 ? (
+                <p className="text-center text-gray-500 italic py-4">{t('no_events_day')}</p>
+            ) : (
+                <ul className="space-y-3">
+                {selectedDayEvents.map(event => (
+                    <li key={event.id} onClick={() => setViewingEvent(event)} className="bg-white p-4 rounded-lg shadow-sm flex justify-between items-start transition-shadow hover:shadow-md cursor-pointer">
+                        <div>
+                            <p className="font-bold">{event.title} <span className="text-sm font-normal text-gray-500">({tSubject(event.subject)})</span></p>
+                            <p className={`text-sm font-semibold ${getThemeClasses('text')}`}>{(event.start as any).toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})} - {(event.end as any).toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})}</p>
+                            {event.description && <p className="text-sm text-gray-500 mt-1 truncate">{event.description}</p>}
+                        </div>
+                        <div className="flex gap-2">
+                            <button type="button" onClick={(e) => { e.stopPropagation(); openModal(event, null); }} className="p-2 text-white bg-yellow-400 hover:bg-yellow-500 rounded-md transition-colors active:scale-90"><Edit className="w-4 h-4"/></button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event); }} className="p-2 text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors active:scale-90"><Trash2 className="w-4 h-4"/></button>
+                        </div>
+                    </li>
+                ))}
+                </ul>
+            )
         ) : (
-            <ul className="space-y-3">
-            {selectedDayEvents.map(event => (
-                <li key={event.id} onClick={() => setViewingEvent(event)} className="bg-white p-4 rounded-lg shadow-sm flex justify-between items-start transition-shadow hover:shadow-md cursor-pointer">
-                    <div>
-                        <p className="font-bold">{event.title} <span className="text-sm font-normal text-gray-500">({tSubject(event.subject)})</span></p>
-                        <p className={`text-sm font-semibold ${getThemeClasses('text')}`}>{(event.start as any).toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})} - {(event.end as any).toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})}</p>
-                        {event.description && <p className="text-sm text-gray-500 mt-1 truncate">{event.description}</p>}
-                    </div>
-                    <div className="flex gap-2">
-                         <button type="button" onClick={(e) => { e.stopPropagation(); openModal(event, null); }} className="p-2 text-white bg-yellow-400 hover:bg-yellow-500 rounded-md transition-colors active:scale-90"><Edit className="w-4 h-4"/></button>
-                         <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event); }} className="p-2 text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors active:scale-90"><Trash2 className="w-4 h-4"/></button>
-                    </div>
-                </li>
-            ))}
-            </ul>
+            <WeekGridView
+                weekDays={daysOfWeek}
+                eventsForWeek={eventsForCurrentWeek}
+                t={t}
+                getThemeClasses={getThemeClasses}
+                tSubject={tSubject}
+                language={language}
+                user={user}
+                userId={userId}
+                showAppModal={showAppModal}
+                onEventClick={setViewingEvent}
+                onGridCellClick={(date) => openModal(null, date)}
+            />
         )}
       </div>
     </div>
@@ -279,13 +653,16 @@ const CalendarView: React.FC<CalendarViewProps> = ({ userEvents, t, getThemeClas
               </div>
           </div>
       )}
+      
+      {isAIModalOpen && <AIImporterModal user={user} t={t} tSubject={tSubject} getThemeClasses={getThemeClasses} showAppModal={showAppModal} userId={userId} language={language} onClose={() => setIsAIModalOpen(false)} />}
+
 
       {viewingEvent && (
         <div onClick={() => setViewingEvent(null)} className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 animate-fade-in p-4">
             <div onClick={(e) => e.stopPropagation()} className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md space-y-4 animate-scale-up max-h-[90vh] overflow-y-auto">
                 <h3 className="text-xl font-bold">{viewingEvent.title}</h3>
                 <p><span className="font-semibold">{t('event_subject')}:</span> {tSubject(viewingEvent.subject)}</p>
-                <p><span className="font-semibold">{t('event_type')}:</span> {t(viewingEvent.type)}</p>
+                <p><span className="font-semibold">{t('event_type')}:</span> {t(`event_${viewingEvent.type}`)}</p>
                 <p><span className="font-semibold">Tijd:</span> {(viewingEvent.start as any).toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})} - {(viewingEvent.end as any).toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})}</p>
                 {viewingEvent.description && (
                     <div>

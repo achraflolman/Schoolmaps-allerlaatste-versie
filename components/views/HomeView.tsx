@@ -116,9 +116,9 @@ const SubjectsWidget: React.FC<Omit<HomeViewProps, 'recentFiles' | 'userEvents'>
                     {filteredSubjects.map(subjectKey => {
                         const Icon = subjectIconMap[subjectKey] || subjectIconMap.default;
                         return (
-                            <button key={subjectKey} onClick={() => setCurrentSubject(subjectKey)} className={`p-4 rounded-xl shadow-md flex flex-col items-center justify-center text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-2 ${getThemeClasses('ring')} bg-gray-50 hover:bg-white`}>
-                                <Icon className={`w-10 h-10 mb-3 ${getThemeClasses('text')}`} />
-                                <span className={`text-base font-bold ${getThemeClasses('text-strong')}`}>{tSubject(subjectKey)}</span>
+                            <button key={subjectKey} onClick={() => setCurrentSubject(subjectKey)} className={`p-3 sm:p-4 rounded-xl shadow-md flex flex-col items-center justify-center text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-2 ${getThemeClasses('ring')} bg-gray-50 hover:bg-white`}>
+                                <Icon className={`w-8 h-8 sm:w-10 sm:h-10 mb-2 ${getThemeClasses('text')}`} />
+                                <span className={`text-sm sm:text-base font-bold ${getThemeClasses('text-strong')} leading-tight`}>{tSubject(subjectKey)}</span>
                             </button>
                         );
                     })}

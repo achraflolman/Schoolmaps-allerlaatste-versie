@@ -23,6 +23,7 @@ interface SettingsViewProps {
   onProfileUpdate: (updatedData: Partial<AppUser>) => Promise<void>;
   onDeleteAccountRequest: () => void;
   onCleanupAccountRequest: () => void;
+  onClearCalendarRequest: () => void;
   setIsAvatarModalOpen: (isOpen: boolean) => void;
 }
 
@@ -49,7 +50,7 @@ const SortableItem = React.memo(({ id, t }: { id: string, t: any }) => {
 });
 
 
-const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, showAppModal, tSubject, setCurrentView, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, setIsAvatarModalOpen }) => {
+const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, showAppModal, tSubject, setCurrentView, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, setIsAvatarModalOpen }) => {
   const [activeTab, setActiveTab] = useState('account');
   const [isSaving, setIsSaving] = useState(false);
   
@@ -392,6 +393,20 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
                         {t('danger_zone_title')}
                     </h3>
                     <div className="space-y-4">
+                        {/* Clear Calendar Action */}
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-white rounded-lg border border-red-100">
+                            <div>
+                                <h4 className="font-bold text-red-700">{t('clear_calendar_section_title')}</h4>
+                                <p className="text-sm text-gray-600 max-w-md">{t('clear_calendar_section_description')}</p>
+                            </div>
+                            <button 
+                                onClick={onClearCalendarRequest} 
+                                className="mt-3 sm:mt-0 sm:ml-4 flex-shrink-0 py-2 px-4 rounded-lg text-white font-bold bg-red-600 hover:bg-red-700 transition-transform active:scale-95"
+                            >
+                                {t('clear_calendar_button')}
+                            </button>
+                        </div>
+                        
                         {/* Cleanup Account Action */}
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-white rounded-lg border border-red-100">
                             <div>

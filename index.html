@@ -35,13 +35,23 @@
     "path": "https://aistudiocdn.com/path@^0.12.7",
     "vite": "https://aistudiocdn.com/vite@^7.1.3",
     "url": "https://aistudiocdn.com/url@^0.11.4",
-    "firebase/": "https://aistudiocdn.com/firebase@^12.2.1/"
+    "firebase/": "https://aistudiocdn.com/firebase@^12.2.1/",
+    "@google/genai": "https://esm.sh/@google/genai"
   }
 }
 </script>
 
     <!-- Jouw CSS -->
     <link rel="stylesheet" href="/index.css" />
+
+    <!-- Auto-scaling & Fluid Typography -->
+    <style>
+      html {
+        /* This makes the base font size responsive, so all rem units in Tailwind scale smoothly. */
+        /* It scales from a smaller base on mobile up to 16px on desktop. */
+        font-size: clamp(13.5px, 0.84375rem + 0.25vw, 16px);
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
