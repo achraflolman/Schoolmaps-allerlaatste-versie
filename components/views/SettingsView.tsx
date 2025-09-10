@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import type { AppUser, ModalContent } from '../../types';
 import { auth } from '../../services/firebase';
 import { allSubjects, availableThemeColors, educationLevels, availableFonts } from '../../constants';
-import { User, Palette, Info, HelpCircle, Shield, GripVertical, Plus, Bell, Type, AlertTriangle, LifeBuoy, Trash2 } from 'lucide-react';
+import { User, Palette, Info, HelpCircle, Shield, GripVertical, Plus, Bell, Type, AlertTriangle, LifeBuoy, Trash2, Bot } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -67,7 +67,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
   const [customSubjectInput, setCustomSubjectInput] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(user.notificationsEnabled ?? true);
 
-
   useEffect(() => {
     setFormData({
       userName: user.userName || '',
@@ -124,7 +123,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
         await onProfileUpdate({
             ...formData,
             selectedSubjects,
-            customSubjects
+            customSubjects,
         });
         showAppModal({ text: t('success_settings_saved') });
         setIsSaving(false);

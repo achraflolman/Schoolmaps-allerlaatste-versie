@@ -1,11 +1,11 @@
 // FIX: Import firebase namespace for type definitions
 import firebase from 'firebase/compat/app';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Menu, LogOut, Camera, Bell, Flame, Loader2 } from 'lucide-react';
+import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 
 import { auth, db, appId, storage, EmailAuthProvider, Timestamp, arrayUnion, increment } from './services/firebase';
 import { translations, subjectDisplayTranslations, defaultHomeLayout } from './constants';
-import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet } from './types';
+import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan } from './types';
 
 import CustomModal from './components/ui/Modal';
 import BroadcastModal from './components/new/BroadcastModal';
@@ -30,6 +30,9 @@ import AdminPinView from './components/views/admin/AdminPinView';
 import PinVerificationModal from './components/views/admin/PinVerificationModal';
 import AvatarSelectionModal from './components/ui/AvatarSelectionModal';
 import ProgressView from './components/views/ProgressView';
+import StudyPlannerView from './components/views/StudyPlannerView';
+import AIChatView from './components/views/AIChatView';
+import AISetupView from './components/views/AISetupView';
 
 
 type AppStatus = 'initializing' | 'unauthenticated' | 'authenticated' | 'awaiting-verification';
@@ -136,6 +139,7 @@ const MainAppLayout: React.FC<{
     searchQuery: string;
     setSearchQuery: (query: string) => void;
     userEvents: CalendarEvent[];
+    userStudyPlans: StudyPlan[];
     recentFiles: FileData[];
     allUserFiles: FileData[];
     allUserNotes: Note[];
@@ -168,15 +172,18 @@ const MainAppLayout: React.FC<{
     setIsTimerActive: (a: boolean) => void;
     selectedTaskForTimer: ToDoTask | null;
     setSelectedTaskForTimer: (t: ToDoTask | null) => void;
+    addCalendarEvent: (eventData: Omit<CalendarEvent, 'id' | 'ownerId' | 'createdAt'>) => Promise<string>;
+    removeCalendarEvent: (title: string, date: string) => Promise<string>;
 }> = ({
     user, t, tSubject, getThemeClasses, showAppModal, copyTextToClipboard, setIsAvatarModalOpen,
     handleLogout, currentView, setCurrentView, currentSubject, setCurrentSubject, handleGoHome,
-    subjectFiles, searchQuery, setSearchQuery, userEvents, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets,
+    subjectFiles, searchQuery, setSearchQuery, userEvents, userStudyPlans, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets,
     language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, closeAppModal, notifications, unreadCount, showBroadcast,
-    focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer
+    focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, addCalendarEvent, removeCalendarEvent
 }) => {
     
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isChatOpen, setIsChatOpen] = useState(false);
     const sidebarRef = useRef<HTMLDivElement>(null);
 
     // Sidebar Click-outside Handler remains here as it's UI-specific to the layout
@@ -195,15 +202,15 @@ const MainAppLayout: React.FC<{
         };
     }, [isSidebarOpen]);
 
-    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer };
+    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents, allUserFiles, allUserNotes, allUserFlashcardSets };
 
     const mainContent = (
-        <div className="animate-fade-in">
+        <div>
             {currentView === 'home' && !currentSubject && <HomeView {...{ user, setCurrentView, t, getThemeClasses, tSubject, setCurrentSubject, recentFiles, userEvents, language }} />}
             {currentView === 'home' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
             {currentView === 'calendar' && <CalendarView {...{ userEvents, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user }} />}
+            {currentView === 'planner' && <StudyPlannerView {...{ userStudyPlans, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user }} />}
             {currentView === 'notes' && <NotesView {...{ userId: user.uid, user, t, tSubject, getThemeClasses, showAppModal }} />}
-            {currentView === 'progress' && <ProgressView {...{ user, t, tSubject, getThemeClasses, userEvents, allUserFiles, allUserNotes, allUserFlashcardSets }} />}
             {currentView === 'tools' && <ToolsView {...toolsViewProps} />}
             {currentView === 'settings' && <SettingsView {...{ user, t, getThemeClasses, language, setLanguage, themeColor, setThemeColor, showAppModal, tSubject, setCurrentView, onProfileUpdate, fontFamily, setFontFamily, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, setIsAvatarModalOpen }} />}
             {currentView === 'notifications' && <NotificationsView {...{ user, t, getThemeClasses, notifications, setCurrentView, onProfileUpdate, showBroadcast, showAppModal }} />}
@@ -245,12 +252,37 @@ const MainAppLayout: React.FC<{
                         </div>
                     </div>
                </header>
-                <div className="flex-1 p-[clamp(1rem,2vw+0.5rem,2rem)]">
+                <div className="flex-1 p-[clamp(1rem,2vw+0.5rem,2rem)] relative">
                     <div className="max-w-7xl mx-auto">
                         {mainContent}
                     </div>
                 </div>
             </main>
+            
+            {!isChatOpen && (
+                <button
+                    onClick={() => setIsChatOpen(true)}
+                    className={`fixed bottom-6 right-6 z-40 p-4 rounded-full text-white shadow-lg transform transition-all duration-300 hover:scale-110 active:scale-95 animate-bounce-in ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}
+                    title={t('ai_chat')}
+                >
+                    <Bot className="w-6 h-6" />
+                </button>
+            )}
+
+            {isChatOpen && (
+                 <AIChatView
+                    user={user}
+                    t={t}
+                    getThemeClasses={getThemeClasses}
+                    showAppModal={showAppModal}
+                    onClose={() => setIsChatOpen(false)}
+                    addCalendarEvent={addCalendarEvent}
+                    removeCalendarEvent={removeCalendarEvent}
+                    tSubject={tSubject}
+                    userEvents={userEvents}
+                    onProfileUpdate={onProfileUpdate}
+                />
+            )}
         </div>
     );
 };
@@ -349,6 +381,7 @@ const App: React.FC = () => {
     const [selectedUserForDetail, setSelectedUserForDetail] = useState<AppUser | null>(null);
     const [isPinVerificationModalOpen, setIsPinVerificationModalOpen] = useState(false);
     const [verificationSkipped, setVerificationSkipped] = useState(sessionStorage.getItem('schoolmaps_verification_skipped') === 'true');
+    const [showAiSetup, setShowAiSetup] = useState(false);
     
     // Admin specific state
     const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
@@ -360,6 +393,7 @@ const App: React.FC = () => {
     const [allSubjectFiles, setAllSubjectFiles] = useState<FileData[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [userEvents, setUserEvents] = useState<CalendarEvent[]>([]);
+    const [userStudyPlans, setUserStudyPlans] = useState<StudyPlan[]>([]);
     const [recentFiles, setRecentFiles] = useState<FileData[]>([]);
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
@@ -553,6 +587,7 @@ const App: React.FC = () => {
             setAllUserFiles([]);
             setAllUserNotes([]);
             setAllUserFlashcardSets([]);
+            setUserStudyPlans([]);
             return;
         }
 
@@ -560,6 +595,12 @@ const App: React.FC = () => {
         const unsubscribeEvents = eventsQuery.onSnapshot((snapshot) => {
             const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CalendarEvent));
             setUserEvents(fetchedEvents);
+        });
+        
+        const plansQuery = db.collection(`artifacts/${appId}/users/${user.uid}/studyPlans`).orderBy('createdAt', 'desc');
+        const unsubscribePlans = plansQuery.onSnapshot((snapshot) => {
+            const fetchedPlans = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudyPlan));
+            setUserStudyPlans(fetchedPlans);
         });
 
         const filesQuery = db.collection(`artifacts/${appId}/public/data/files`).where('ownerId', '==', user.uid).orderBy('createdAt', 'desc').limit(5);
@@ -668,6 +709,7 @@ const App: React.FC = () => {
             unsubscribeAllFiles();
             unsubscribeAllNotes();
             unsubscribeAllSets();
+            unsubscribePlans();
         };
 
     }, [user, isAdmin, t]);
@@ -801,7 +843,7 @@ const App: React.FC = () => {
     
         // Delete all private user collections
         const userRoot = `artifacts/${appId}/users/${uid}`;
-        const collectionsToDelete = ['calendarEvents', 'notes', 'tasks', 'notifications'];
+        const collectionsToDelete = ['calendarEvents', 'notes', 'tasks', 'notifications', 'studyPlans'];
         for (const coll of collectionsToDelete) {
             await batchDelete(db.collection(`${userRoot}/${coll}`));
         }
@@ -834,6 +876,7 @@ const App: React.FC = () => {
             setUserEvents([]);
             setAllSubjectFiles([]);
             setNotifications([]);
+            setUserStudyPlans([]);
         } catch (error) {
             console.error("Account cleanup failed:", error);
             showAppModal({ text: t('error_account_cleanup_failed')});
@@ -886,6 +929,65 @@ const App: React.FC = () => {
             setIsReauthModalOpen(false);
         }
     };
+
+    const addCalendarEventFromAI = useCallback(async (eventData: Omit<CalendarEvent, 'id' | 'ownerId' | 'createdAt'>): Promise<string> => {
+        if (!user?.uid) {
+            return "Error: User not found.";
+        }
+        try {
+            const docRef = await db.collection(`artifacts/${appId}/users/${user.uid}/calendarEvents`).add({
+                ...eventData,
+                ownerId: user.uid,
+                createdAt: Timestamp.now(),
+            });
+            return `Event "${eventData.title}" was successfully added to your calendar.`;
+        } catch (error) {
+            console.error("Failed to add calendar event from AI:", error);
+            return `Sorry, I failed to add the event. Please try again. Error: ${(error as Error).message}`;
+        }
+    }, [user?.uid]);
+    
+    const removeCalendarEventFromAI = useCallback(async (title: string, date: string): Promise<string> => {
+        if (!user?.uid) {
+            return "Error: User not found.";
+        }
+        try {
+            const eventsRef = db.collection(`artifacts/${appId}/users/${user.uid}/calendarEvents`);
+
+            // Create a date range for the entire day
+            const startOfDay = new Date(`${date}T00:00:00`);
+            const endOfDay = new Date(`${date}T23:59:59`);
+
+            if (isNaN(startOfDay.getTime()) || isNaN(endOfDay.getTime())) {
+                return `Sorry, the date format "${date}" is invalid. Please use YYYY-MM-DD.`;
+            }
+
+            const q = eventsRef
+                .where('title', '==', title)
+                .where('start', '>=', Timestamp.fromDate(startOfDay))
+                .where('start', '<=', Timestamp.fromDate(endOfDay));
+
+            const querySnapshot = await q.get();
+
+            if (querySnapshot.empty) {
+                return `I couldn't find an event named "${title}" on ${date}.`;
+            }
+
+            // Delete all found events that match (in case of duplicates)
+            const batch = db.batch();
+            querySnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+
+            const eventCount = querySnapshot.size;
+            return `Successfully removed ${eventCount} event(s) named "${title}" from your calendar on ${date}.`;
+
+        } catch (error) {
+            console.error("Failed to remove calendar event from AI:", error);
+            return `Sorry, I failed to remove the event. Please try again. Error: ${(error as Error).message}`;
+        }
+    }, [user?.uid]);
 
 
     // Main authentication and profile loading effect
@@ -999,6 +1101,12 @@ const App: React.FC = () => {
                         };
                         setUser(finalUser);
                         
+                        if (finalUser.hasCompletedOnboarding === false) {
+                            setShowAiSetup(true);
+                        } else {
+                            setShowAiSetup(false);
+                        }
+                        
                         if (finalUser.focusDuration) setFocusMinutes(finalUser.focusDuration);
                         if (finalUser.breakDuration) setBreakMinutes(finalUser.breakDuration);
 
@@ -1017,6 +1125,9 @@ const App: React.FC = () => {
                             isVerifiedByEmail: firebaseUser.emailVerified,
                             focusDuration: 25, breakDuration: 5,
                             dismissedBroadcastIds: [], dismissedFeedbackIds: [],
+                            aiBotName: 'AI Assistent',
+                            aiBotAvatarUrl: null,
+                            hasCompletedOnboarding: false,
                         };
                         await userDocRef.set(finalUser, { merge: true });
                         setUser(finalUser);
@@ -1101,7 +1212,7 @@ const App: React.FC = () => {
 
     const authContainerClasses = (appStatus === 'unauthenticated' || appStatus === 'initializing' || appStatus === 'awaiting-verification' || (showIntro && !user) ) ? getAuthThemeClasses('bg') : '';
 
-    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, userEvents, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets };
+    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, userEvents, userStudyPlans, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets, addCalendarEvent: addCalendarEventFromAI, removeCalendarEvent: removeCalendarEventFromAI };
     
     const isLoading = !isAppReadyForDisplay || !isMinLoadingTimePassed;
 
@@ -1169,7 +1280,15 @@ const App: React.FC = () => {
                 )}
                 
                 {appStatus === 'authenticated' && user && (
-                     isAdmin && adminSettings ? (
+                     showAiSetup ? (
+                        <AISetupView 
+                            user={user}
+                            onFinish={() => setShowAiSetup(false)}
+                            onProfileUpdate={handleProfileUpdate}
+                            t={t}
+                            getThemeClasses={getThemeClasses}
+                        />
+                     ) : isAdmin && adminSettings ? (
                         adminSettings.pinProtectionEnabled && !isPinVerified ? (
                             <AdminPinView 
                                 user={user}

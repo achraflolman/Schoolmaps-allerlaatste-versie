@@ -26,6 +26,9 @@ export interface AppUser {
     breakDuration?: number;
     dismissedBroadcastIds?: string[];
     dismissedFeedbackIds?: string[];
+    aiBotName?: string;
+    aiBotAvatarUrl?: string | null;
+    hasCompletedOnboarding?: boolean;
 }
 
 export interface AdminSettings {
@@ -96,6 +99,30 @@ export interface FlashcardSet {
     ownerId: string;
     createdAt: firebase.firestore.Timestamp;
     cardCount: number;
+}
+
+export interface StudyScheduleItem {
+  day: string; // YYYY-MM-DD
+  time: string;
+  task: string;
+  tip: string;
+  subject?: string;
+}
+
+export interface StudyPlanSubject {
+    subject: string;
+    topic: string;
+    amount: string;
+}
+
+export interface StudyPlan {
+    id: string;
+    userId: string;
+    title: string;
+    testDate: firebase.firestore.Timestamp;
+    subjects: StudyPlanSubject[];
+    schedule: StudyScheduleItem[];
+    createdAt: firebase.firestore.Timestamp;
 }
 
 

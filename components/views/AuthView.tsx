@@ -156,6 +156,9 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
                 notificationsEnabled: true,
                 disabled: false,
                 isVerifiedByEmail: false,
+                aiBotName: 'AI Assistent',
+                aiBotAvatarUrl: null,
+                hasCompletedOnboarding: false,
             });
 
             // Sign out immediately to prevent the app from auto-logging in the unverified user.
