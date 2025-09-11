@@ -1,4 +1,5 @@
-// FIX: Use Firebase v9 compatibility layer to support v8 syntax for types.
+
+// FIX: Use Firebase v8 compat for types.
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
