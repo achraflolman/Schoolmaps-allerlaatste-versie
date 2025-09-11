@@ -1,5 +1,6 @@
-// FIX: Import firebase namespace for type definitions
+// FIX: Use Firebase v9 compatibility layer to support v8 syntax for types.
 import firebase from 'firebase/compat/app';
+import 'firebase/compat/firestore';
 
 export interface AppUser {
     uid: string;

@@ -1,5 +1,6 @@
-// FIX: Import firebase namespace for type definitions
+// FIX: Use Firebase v9 compatibility layer to support v8 syntax for types.
 import firebase from 'firebase/compat/app';
+import 'firebase/compat/firestore';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 
