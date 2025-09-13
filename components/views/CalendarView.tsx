@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, PlusCircle, Edit, Trash2, Loader2, Sparkles, List, LayoutGrid } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PlusCircle, Edit, Trash2, Loader2, Sparkles, List, LayoutGrid, FileText, Presentation, BookOpen, Mic, ClipboardList, Briefcase, School, Download } from 'lucide-react';
 import { db, appId, Timestamp } from '../../services/firebase';
 import { GoogleGenAI, Type } from '@google/genai';
 import type { CalendarEvent, AppUser, ModalContent } from '../../types';
@@ -14,6 +14,17 @@ interface CalendarViewProps {
   userId: string;
   user: AppUser;
 }
+
+const eventTypeIconMap: { [key: string]: React.FC<any> } = {
+    'work': Briefcase,
+    'school': School,
+    'homework': BookOpen,
+    'test': FileText,
+    'presentation': Presentation,
+    'oral': Mic,
+    'other': ClipboardList,
+};
+
 
 // Helper to get a YYYY-MM-DD string from a Date object in its local timezone
 const toLocalDateString = (date: Date): string => {
@@ -32,7 +43,7 @@ interface AIParsedEvent {
     date: string; // YYYY-MM-DD
     time: string; // HH:mm
     description?: string;
-    type: 'test' | 'presentation' | 'homework' | 'oral' | 'other';
+    type: 'test' | 'presentation' | 'homework' | 'oral' | 'other' | 'work' | 'school';
 }
 
 const AIImporterModal: React.FC<Omit<CalendarViewProps, 'userEvents'> & { onClose: () => void }> = ({ user, t, tSubject, getThemeClasses, showAppModal, userId, language, onClose }) => {
@@ -61,7 +72,7 @@ For each event, extract:
 2. "subject": The school subject. This MUST be one of the following, pick the closest match: ${userSubjectsList}. If no clear match is found, return an empty string for the subject.
 3. "date": The specific date in YYYY-MM-DD format. Calculate this based on the current date and relative terms like "today", "tomorrow", "next week monday".
 4. "time": Start time in HH:mm format. Default to 09:00 if not specified. Assume events last 1 hour.
-5. "type": The event type. Must be one of 'test', 'presentation', 'homework', 'oral', 'other'. Infer this from keywords like "toets" (test), "opdracht" (homework), "presentatie" (presentation), "mondeling" (oral).
+5. "type": The event type. Must be one of 'test', 'presentation', 'homework', 'oral', 'other', 'work', 'school'. Infer this from keywords like "toets" (test), "opdracht" (homework), "presentatie" (presentation), "mondeling" (oral), "werk" (work), "school" (school).
 6. "description": Optional extra details.
 
 User's schedule:
@@ -240,6 +251,126 @@ ${inputText}
     )
 }
 
+const DownloadModal: React.FC<Pick<CalendarViewProps, 'userEvents' | 't' | 'getThemeClasses' | 'tSubject' | 'language' | 'showAppModal'> & { onClose: () => void }> = ({ userEvents, t, getThemeClasses, tSubject, language, showAppModal, onClose }) => {
+    const [weeksToDownload, setWeeksToDownload] = useState(1);
+    const [format, setFormat] = useState<'ics' | 'txt'>('ics');
+    const [isDownloading, setIsDownloading] = useState(false);
+
+    const formatIcsDate = (date: Date): string => {
+        return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    };
+
+    const generateIcsContent = (events: CalendarEvent[]): string => {
+        let icsString = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'PRODID:-//Schoolmaps Pro//EN'
+        ].join('\r\n');
+
+        events.forEach(event => {
+            const startDate = (event.start as any).toDate();
+            const endDate = (event.end as any).toDate();
+
+            icsString += '\r\n' + [
+                'BEGIN:VEVENT',
+                `UID:${event.id}@schoolmaps.pro`,
+                `DTSTAMP:${formatIcsDate(new Date())}`,
+                `DTSTART:${formatIcsDate(startDate)}`,
+                `DTEND:${formatIcsDate(endDate)}`,
+                `SUMMARY:${event.title}`,
+                `DESCRIPTION:${event.description || ''}`,
+                `LOCATION:${tSubject(event.subject)}`,
+                'END:VEVENT'
+            ].join('\r\n');
+        });
+
+        icsString += '\r\n' + 'END:VCALENDAR';
+        return icsString;
+    };
+
+    const generateTxtContent = (events: CalendarEvent[]): string => {
+        let txtString = `Schoolmaps Agenda\r\n===================\r\n\r\n`;
+        const eventsByDate = events.reduce((acc, event) => {
+            const dateStr = (event.start as any).toDate().toLocaleDateString(language, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+            if (!acc[dateStr]) acc[dateStr] = [];
+            acc[dateStr].push(event);
+            return acc;
+        }, {} as Record<string, CalendarEvent[]>);
+
+        const sortedDates = Object.keys(eventsByDate).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+        sortedDates.forEach(dateStr => {
+            txtString += `--- ${dateStr} ---\r\n`;
+            eventsByDate[dateStr]
+                .sort((a, b) => (a.start as any).toMillis() - (b.start as any).toMillis())
+                .forEach(event => {
+                    const startTime = (event.start as any).toDate().toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' });
+                    const endTime = (event.end as any).toDate().toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' });
+                    txtString += `- ${startTime} - ${endTime}: ${event.title} (${tSubject(event.subject)})\r\n`;
+                    if (event.description) txtString += `  ${event.description}\r\n`;
+                });
+            txtString += `\r\n`;
+        });
+        return txtString;
+    };
+
+    const handleDownload = () => {
+        setIsDownloading(true);
+
+        const now = new Date();
+        const endDate = new Date();
+        endDate.setDate(now.getDate() + weeksToDownload * 7);
+
+        const eventsToDownload = userEvents.filter(event => {
+            const eventDate = (event.start as any).toDate();
+            return eventDate >= now && eventDate <= endDate;
+        });
+
+        const content = format === 'ics' ? generateIcsContent(eventsToDownload) : generateTxtContent(eventsToDownload);
+        const blob = new Blob([content], { type: format === 'ics' ? 'text/calendar' : 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `schoolmaps_agenda.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showAppModal({ text: t('downloading_and_started') });
+        setTimeout(() => {
+            setIsDownloading(false);
+            onClose();
+        }, 1000);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 animate-fade-in p-4">
+            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md space-y-4 animate-scale-up">
+                <h3 className="text-xl font-bold">{t('download_agenda')}</h3>
+                <div className="flex items-center gap-2">
+                    <label className="font-semibold">{t('download_weeks_label')}:</label>
+                    <input type="number" value={weeksToDownload} onChange={e => setWeeksToDownload(Math.max(1, parseInt(e.target.value) || 1))} className="w-20 p-1 border rounded-md" />
+                    <span>{t('weeks')}</span>
+                </div>
+                <div>
+                    <p className="font-semibold mb-2">{t('download_format_label')}</p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <button onClick={() => setFormat('ics')} className={`flex-1 text-left p-3 border rounded-lg ${format === 'ics' ? `${getThemeClasses('border')} ${getThemeClasses('bg-light')}` : 'bg-gray-100'}`}>Apple/Google (.ics)</button>
+                        <button onClick={() => setFormat('txt')} className={`flex-1 text-left p-3 border rounded-lg ${format === 'txt' ? `${getThemeClasses('border')} ${getThemeClasses('bg-light')}` : 'bg-gray-100'}`}>Tekst (.txt)</button>
+                    </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                    <button type="button" onClick={onClose} disabled={isDownloading} className="py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">{t('cancel_button')}</button>
+                    <button onClick={handleDownload} disabled={isDownloading} className={`py-2 px-4 rounded-lg text-white font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} w-48 flex justify-center items-center`}>
+                        {isDownloading ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> {t('downloading_and_started')}</> : t('download_button')}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 const WeekGridView: React.FC<Omit<CalendarViewProps, 'userEvents'> & {
     weekDays: Date[];
@@ -352,6 +483,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ userEvents, t, getThemeClas
   const [calendarViewMode, setCalendarViewMode] = useState<'list' | 'grid'>('list');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -359,7 +491,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ userEvents, t, getThemeClas
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [type, setType] = useState<'test' | 'presentation' | 'homework' | 'oral' | 'other'>('test');
+  const [type, setType] = useState<CalendarEvent['type']>('test');
   const [subject, setSubject] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -569,6 +701,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({ userEvents, t, getThemeClas
                         <LayoutGrid className="w-5 h-5"/>
                     </button>
                  </div>
+                 <button type="button" onClick={() => setIsDownloadModalOpen(true)} className={`flex items-center text-white font-bold p-2 sm:py-2 sm:px-4 rounded-lg transition-transform active:scale-95 bg-blue-500 hover:bg-blue-600`}>
+                    <Download className="w-5 h-5 sm:mr-2"/> <span className="hidden sm:inline">{t('download_button')}</span>
+                 </button>
                  <button type="button" onClick={() => setIsAIModalOpen(true)} className={`flex items-center text-white font-bold p-2 sm:py-2 sm:px-4 rounded-lg transition-transform active:scale-95 bg-purple-500 hover:bg-purple-600`}>
                     <Sparkles className="w-5 h-5 sm:mr-2"/> <span className="hidden sm:inline">{t('ai_importer_title')}</span>
                 </button>
@@ -583,19 +718,27 @@ const CalendarView: React.FC<CalendarViewProps> = ({ userEvents, t, getThemeClas
                 <p className="text-center text-gray-500 italic py-4">{t('no_events_day')}</p>
             ) : (
                 <ul className="space-y-3">
-                {selectedDayEvents.map(event => (
-                    <li key={event.id} onClick={() => setViewingEvent(event)} className="bg-white p-4 rounded-lg shadow-sm flex justify-between items-start transition-shadow hover:shadow-md cursor-pointer">
-                        <div>
-                            <p className="font-bold">{event.title} <span className="text-sm font-normal text-gray-500">({tSubject(event.subject)})</span></p>
-                            <p className={`text-sm font-semibold ${getThemeClasses('text')}`}>{(event.start as any).toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})} - {(event.end as any).toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})}</p>
-                            {event.description && <p className="text-sm text-gray-500 mt-1 truncate">{event.description}</p>}
-                        </div>
-                        <div className="flex gap-2">
-                            <button type="button" onClick={(e) => { e.stopPropagation(); openModal(event, null); }} className="p-2 text-white bg-yellow-400 hover:bg-yellow-500 rounded-md transition-colors active:scale-90"><Edit className="w-4 h-4"/></button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event); }} className="p-2 text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors active:scale-90"><Trash2 className="w-4 h-4"/></button>
-                        </div>
-                    </li>
-                ))}
+                {selectedDayEvents.map(event => {
+                    const EventIcon = eventTypeIconMap[event.type] || ClipboardList;
+                    return (
+                        <li key={event.id} onClick={() => setViewingEvent(event)} className="bg-white p-4 rounded-lg shadow-sm flex justify-between items-start transition-shadow hover:shadow-md cursor-pointer">
+                            <div className="flex-grow flex items-start gap-4">
+                                <div className={`p-3 rounded-full ${getThemeClasses('bg-light')} flex-shrink-0`}>
+                                    <EventIcon className={`w-5 h-5 ${getThemeClasses('text')}`} />
+                                </div>
+                                <div>
+                                    <p className="font-bold">{event.title} <span className="text-sm font-normal text-gray-500">({tSubject(event.subject)})</span></p>
+                                    <p className={`text-sm font-semibold ${getThemeClasses('text')}`}>{(event.start as any).toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})} - {(event.end as any).toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})}</p>
+                                    {event.description && <p className="text-sm text-gray-500 mt-1 truncate">{event.description}</p>}
+                                </div>
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0 ml-2">
+                                <button type="button" onClick={(e) => { e.stopPropagation(); openModal(event, null); }} className="p-2 text-white bg-yellow-400 hover:bg-yellow-500 rounded-md transition-colors active:scale-90"><Edit className="w-4 h-4"/></button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event); }} className="p-2 text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors active:scale-90"><Trash2 className="w-4 h-4"/></button>
+                            </div>
+                        </li>
+                    );
+                })}
                 </ul>
             )
         ) : (
@@ -628,6 +771,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ userEvents, t, getThemeClas
                           <option value="presentation">{t('event_presentation')}</option>
                           <option value="homework">{t('event_homework')}</option>
                           <option value="oral">{t('event_oral')}</option>
+                          <option value="work">{t('event_work')}</option>
+                          <option value="school">{t('event_school')}</option>
                           <option value="other">{t('event_other')}</option>
                       </select>
                       <select value={subject} onChange={e => setSubject(e.target.value)} className="w-full p-2 border rounded-lg bg-white" required>
@@ -656,6 +801,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ userEvents, t, getThemeClas
       
       {isAIModalOpen && <AIImporterModal user={user} t={t} tSubject={tSubject} getThemeClasses={getThemeClasses} showAppModal={showAppModal} userId={userId} language={language} onClose={() => setIsAIModalOpen(false)} />}
 
+      {isDownloadModalOpen && <DownloadModal userEvents={userEvents} t={t} getThemeClasses={getThemeClasses} tSubject={tSubject} language={language} showAppModal={showAppModal} onClose={() => setIsDownloadModalOpen(false)} />}
 
       {viewingEvent && (
         <div onClick={() => setViewingEvent(null)} className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 animate-fade-in p-4">

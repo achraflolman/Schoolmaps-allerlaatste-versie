@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { db, appId, arrayUnion } from '../../services/firebase';
 import type { AppUser, Notification, ModalContent } from '../../types';
@@ -74,10 +75,14 @@ const NotificationsView: React.FC<NotificationsViewProps> = ({ user, notificatio
                 if (broadcastIdsToDismiss.length > 0 || feedbackIdsToDismiss.length > 0) {
                     const updateData: Partial<AppUser> = {};
                     if (broadcastIdsToDismiss.length > 0) {
-                        updateData.dismissedBroadcastIds = arrayUnion(...broadcastIdsToDismiss);
+                        // FIX: Cast Firebase FieldValue to any to satisfy the onProfileUpdate prop type,
+                        // which expects a string array. The underlying Firebase update operation handles FieldValue correctly.
+                        updateData.dismissedBroadcastIds = arrayUnion(...broadcastIdsToDismiss) as any;
                     }
                     if (feedbackIdsToDismiss.length > 0) {
-                        updateData.dismissedFeedbackIds = arrayUnion(...feedbackIdsToDismiss);
+                        // FIX: Cast Firebase FieldValue to any to satisfy the onProfileUpdate prop type,
+                        // which expects a string array. The underlying Firebase update operation handles FieldValue correctly.
+                        updateData.dismissedFeedbackIds = arrayUnion(...feedbackIdsToDismiss) as any;
                     }
                     await onProfileUpdate(updateData);
                 }

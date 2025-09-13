@@ -56,14 +56,15 @@ const CreatePlanView: React.FC<Omit<StudyPlannerViewProps, 'userStudyPlans'> & {
 I need to study for the following subjects:
 ${subjectsInfo}
 
-Create a detailed, day-by-day study schedule. The generated "task" and "tip" fields MUST be in ${langName}.
+Create a realistic, day-by-day study schedule. The generated "task" and "tip" fields MUST be in ${langName}.
 
-Follow these rules:
-1.  **Distribute Workload:** Break down the study material for each subject into specific, manageable daily tasks (e.g., "Read Chapter 1, pages 1-15", "Practice 20 vocabulary words", "Complete exercises 1-5"). Be very specific about the amount.
-2.  **Smart Scheduling:** Allocate study blocks on different days leading up to the test. Don't schedule study sessions on the test day itself.
-3.  **Incorporate Revision:** Add specific revision sessions to review material learned on previous days.
-4.  **Crucially Important: Topic-Specific Tips:** For each study day, the provided tip MUST be practical, insightful, and directly related to the specific topic of the subject for that day's task. Generic tips are unacceptable. For example, if the topic is "The Cold War," a good tip is "Create a timeline of key events to visualize the escalation of tensions." A bad, generic tip would be "Stay hydrated."
-5.  **Time Slots:** Assign a specific time slot (e.g., "16:00 - 17:30") for each study session.
+**CRITICAL RULES:**
+1.  **Assume School Hours:** Assume I have a normal school/work day from 08:30 to 15:00. Plan all study sessions OUTSIDE of these hours.
+2.  **Distribute Workload:** Break down study material into specific, manageable daily tasks. Spread the workload evenly and realistically; do not schedule more than two distinct study sessions per day.
+3.  **Incorporate Revision:** Add specific revision sessions to review material learned on previous days, especially a day or two before the test.
+4.  **Topic-Specific Tips:** The provided tip MUST be practical, insightful, and directly related to the specific topic of that day's task. Generic tips are unacceptable.
+5.  **Time Slots & Breaks:** Assign a specific time slot (e.g., "16:00 - 17:30"). Don't make sessions longer than 90 minutes without suggesting a short break.
+6.  **24-Hour Time:** Use 24-hour format for all times (e.g., 16:00 for 4 PM, 21:00 for 9 PM).
 
 Return the output as a JSON object. The root object must have a key "schedule" which is an array of objects. Each object represents a study task and must have these properties:
 - "day": The date in "YYYY-MM-DD" format.
@@ -271,6 +272,7 @@ const StudyPlannerView: React.FC<StudyPlannerViewProps> = (props) => {
                                         <p className="text-sm text-gray-500">{t('plan_for_date', { date: (plan.testDate as any).toDate().toLocaleDateString(language) })}</p>
                                     </div>
                                     <div className="flex gap-2">
+                                        {/* FIX: Corrected a variable name from 'id' to 'plan.id' in the onClick handler for toggling the display of a study plan's details, resolving a 'Cannot find name' error. */}
                                         <button onClick={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)} className="p-2 bg-gray-200 hover:bg-gray-300 rounded-md">
                                             {expandedPlanId === plan.id ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
                                         </button>

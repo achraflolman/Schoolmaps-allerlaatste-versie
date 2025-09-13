@@ -121,7 +121,7 @@ const AIChatView: React.FC<AIChatViewProps> = ({ user, t, tSubject, getThemeClas
                     date: { type: Type.STRING, description: "The date of the event in YYYY-MM-DD format." },
                     time: { type: Type.STRING, description: "The start time of the event in HH:MM format." },
                     subject: { type: Type.STRING, description: `The subject for the event. Must be one of: ${availableSubjects.join(', ')}` },
-                    type: { type: Type.STRING, description: "The type of event. Must be one of: 'test', 'presentation', 'homework', 'oral', 'other'." }
+                    type: { type: Type.STRING, description: "The type of event. Must be one of: 'test', 'presentation', 'homework', 'oral', 'other', 'work', 'school'." }
                 },
                 required: ["title", "date", "time", "subject", "type"]
             }

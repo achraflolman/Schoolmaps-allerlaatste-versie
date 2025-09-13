@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { 
     Link, Calendar, ArrowRight, Book, FileText,
     MessageSquare, Calculator, Speech, History, Globe, Atom, Beaker, Leaf, BookOpen, School, DollarSign, Laptop, Palette, Music, Volleyball, Scale, BookMarked, Briefcase, Award, GraduationCap, Building, LifeBuoy,
-    Search, XCircle
+    Search, XCircle, Mic, Presentation, ClipboardList
 } from 'lucide-react';
 import type { AppUser, FileData, CalendarEvent } from '../../types';
 
@@ -39,6 +39,17 @@ const subjectIconMap: { [key: string]: React.FC<any> } = {
   "default": (props) => <Book {...props} />,
   "feedback_support": (props) => <LifeBuoy {...props} />,
 };
+
+const eventTypeIconMap: { [key: string]: React.FC<any> } = {
+    'work': Briefcase,
+    'school': School,
+    'homework': BookOpen,
+    'test': FileText,
+    'presentation': Presentation,
+    'oral': Mic,
+    'other': ClipboardList,
+};
+
 
 interface HomeViewProps {
   user: AppUser;
@@ -149,13 +160,19 @@ const AgendaWidget: React.FC<Pick<HomeViewProps, 'userEvents' | 't' | 'tSubject'
                 <Calendar /> {t('todays_agenda_title')}
             </h2>
             {todaysEvents.length > 0 ? (
-                todaysEvents.slice(0, 3).map(event => (
-                    <div key={event.id} className={`p-3 rounded-lg border-l-4 ${getThemeClasses('border')} bg-slate-50`}>
-                        <p className="font-bold">{event.title}</p>
-                        <p className="text-sm text-gray-500 font-semibold">{tSubject(event.subject)}</p>
-                        <p className={`text-sm font-semibold ${getThemeClasses('text')}`}>{event.start.toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})}</p>
-                    </div>
-                ))
+                todaysEvents.slice(0, 3).map(event => {
+                    const EventIcon = eventTypeIconMap[event.type] || Calendar;
+                    return (
+                        <div key={event.id} className={`p-3 rounded-lg border-l-4 ${getThemeClasses('border')} bg-slate-50 flex items-center gap-3`}>
+                            <EventIcon className={`w-5 h-5 ${getThemeClasses('text')} flex-shrink-0`} />
+                            <div>
+                                <p className="font-bold">{event.title}</p>
+                                <p className="text-sm text-gray-500 font-semibold">{tSubject(event.subject)}</p>
+                                <p className={`text-sm font-semibold ${getThemeClasses('text')}`}>{event.start.toDate().toLocaleTimeString(language, {hour: '2-digit', minute:'2-digit'})}</p>
+                            </div>
+                        </div>
+                    );
+                })
             ) : (
                 <div className="text-center py-4">
                     <Calendar className="w-10 h-10 text-gray-300 mx-auto" />

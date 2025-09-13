@@ -55,7 +55,7 @@ export interface CalendarEvent {
     description?: string;
     start: firebase.firestore.Timestamp;
     end: firebase.firestore.Timestamp;
-    type: 'test' | 'presentation' | 'homework' | 'oral' | 'other';
+    type: 'test' | 'presentation' | 'homework' | 'oral' | 'other' | 'work' | 'school';
     subject: string;
     ownerId: string;
     createdAt: firebase.firestore.Timestamp;
