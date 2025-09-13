@@ -1,4 +1,4 @@
-// FIX: Use Firebase v8 compat for types.
+
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 
