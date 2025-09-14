@@ -1,7 +1,5 @@
 
 
-import firebase from 'firebase/compat/app';
-import 'firebase/compat/firestore';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 
@@ -851,11 +849,11 @@ const App: React.FC = () => {
     }, [user, handleProfileUpdate, showAppModal, t]);
     
     const cleanupUserData = async (uid: string) => {
-        const batchDelete = async (query: firebase.firestore.Query) => {
+        const batchDelete = async (query: any) => {
             const snapshot = await query.get();
             if (snapshot.size === 0) return;
             const batch = db.batch();
-            snapshot.docs.forEach(doc => batch.delete(doc.ref));
+            snapshot.docs.forEach((doc: any) => batch.delete(doc.ref));
             await batch.commit();
         };
     

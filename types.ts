@@ -1,12 +1,11 @@
-import firebase from 'firebase/compat/app';
-import 'firebase/compat/firestore';
+import type { FirebaseTimestamp } from './services/firebase';
 
 export interface AppUser {
     uid: string;
     email: string;
     userName: string;
     profilePictureUrl: string | null;
-    createdAt: firebase.firestore.Timestamp | Date;
+    createdAt: FirebaseTimestamp | Date;
     selectedSubjects: string[];
     schoolName: string;
     className: string;
@@ -16,7 +15,7 @@ export interface AppUser {
     fontPreference?: string;
     homeLayout?: string[];
     customSubjects?: string[];
-    lastLoginDate?: firebase.firestore.Timestamp | Date;
+    lastLoginDate?: FirebaseTimestamp | Date;
     streakCount?: number;
     notificationsEnabled?: boolean;
     isAdmin?: boolean;
@@ -43,7 +42,7 @@ export interface FileData {
     description: string;
     subject: string;
     ownerId: string;
-    createdAt: firebase.firestore.Timestamp;
+    createdAt: FirebaseTimestamp;
     fileUrl: string;
     storagePath: string;
 }
@@ -52,13 +51,13 @@ export interface CalendarEvent {
     id: string;
     title: string;
     description?: string;
-    start: firebase.firestore.Timestamp;
-    end: firebase.firestore.Timestamp;
+    start: FirebaseTimestamp;
+    end: FirebaseTimestamp;
     type: 'test' | 'presentation' | 'homework' | 'oral' | 'other' | 'work' | 'school';
     subject: string;
     ownerId: string;
-    createdAt: firebase.firestore.Timestamp;
-    updatedAt?: firebase.firestore.Timestamp;
+    createdAt: FirebaseTimestamp;
+    updatedAt?: FirebaseTimestamp;
 }
 
 export interface Note {
@@ -67,8 +66,8 @@ export interface Note {
     content: string;
     subject: string;
     ownerId: string;
-    createdAt: firebase.firestore.Timestamp;
-    updatedAt?: firebase.firestore.Timestamp;
+    createdAt: FirebaseTimestamp;
+    updatedAt?: FirebaseTimestamp;
 }
 
 export interface ToDoTask {
@@ -76,16 +75,16 @@ export interface ToDoTask {
     text: string;
     completed: boolean;
     ownerId: string;
-    createdAt: firebase.firestore.Timestamp;
-    updatedAt?: firebase.firestore.Timestamp;
-    reminderAt?: firebase.firestore.Timestamp;
-    completedAt?: firebase.firestore.Timestamp;
+    createdAt: FirebaseTimestamp;
+    updatedAt?: FirebaseTimestamp;
+    reminderAt?: FirebaseTimestamp;
+    completedAt?: FirebaseTimestamp;
 }
 
 export interface StudySession {
     id: string;
     userId: string;
-    date: firebase.firestore.Timestamp;
+    date: FirebaseTimestamp;
     durationMinutes: number;
     taskId?: string | null;
 }
@@ -95,8 +94,8 @@ export interface Flashcard {
     question: string;
     answer: string;
     ownerId: string;
-    createdAt: firebase.firestore.Timestamp;
-    dueDate?: firebase.firestore.Timestamp;
+    createdAt: FirebaseTimestamp;
+    dueDate?: FirebaseTimestamp;
     interval?: number;
     easeFactor?: number;
 }
@@ -106,7 +105,7 @@ export interface FlashcardSet {
     name: string;
     subject: string;
     ownerId: string;
-    createdAt: firebase.firestore.Timestamp;
+    createdAt: FirebaseTimestamp;
     cardCount: number;
 }
 
@@ -128,10 +127,10 @@ export interface StudyPlan {
     id: string;
     userId: string;
     title: string;
-    testDate: firebase.firestore.Timestamp;
+    testDate: FirebaseTimestamp;
     subjects: StudyPlanSubject[];
     schedule: StudyScheduleItem[];
-    createdAt: firebase.firestore.Timestamp;
+    createdAt: FirebaseTimestamp;
 }
 
 
@@ -147,7 +146,7 @@ export interface Notification {
     text: string;
     type: 'system' | 'admin' | 'streak' | 'feedback_reply';
     read: boolean;
-    createdAt: firebase.firestore.Timestamp;
+    createdAt: FirebaseTimestamp;
     broadcastId?: string;
     feedbackId?: string;
 }
@@ -156,12 +155,12 @@ export interface BroadcastData {
     id: string;
     title: string;
     message: string;
-    createdAt: firebase.firestore.Timestamp;
+    createdAt: FirebaseTimestamp;
 }
 
 export interface FeedbackReply {
     text: string;
-    repliedAt: firebase.firestore.Timestamp;
+    repliedAt: FirebaseTimestamp;
     repliedBy: 'admin';
     isAdminReply: true;
 }
@@ -174,6 +173,6 @@ export interface Feedback {
     subject: string;
     message: string;
     status: 'new' | 'replied';
-    createdAt: firebase.firestore.Timestamp;
+    createdAt: FirebaseTimestamp;
     replies?: FeedbackReply[];
 }

@@ -1,4 +1,5 @@
 
+
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
@@ -65,5 +66,8 @@ export { db };
 export const Timestamp = firebase.firestore.Timestamp;
 export const arrayUnion = firebase.firestore.FieldValue.arrayUnion;
 export const increment = firebase.firestore.FieldValue.increment;
+
+// Export the Timestamp TYPE for use in other files without creating circular dependencies.
+export type FirebaseTimestamp = firebase.firestore.Timestamp;
 
 export default firebase;
