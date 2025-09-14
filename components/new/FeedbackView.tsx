@@ -18,6 +18,7 @@ const FeedbackView: React.FC<FeedbackViewProps> = ({ user, t, getThemeClasses, s
     const [subject, setSubject] = useState('');
     const [message, setMessage] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [expandedId, setExpandedId] = useState<string | null>(null);
 
     useEffect(() => {
         const q = db.collection(`artifacts/${appId}/public/data/feedback`)
@@ -66,6 +67,10 @@ const FeedbackView: React.FC<FeedbackViewProps> = ({ user, t, getThemeClasses, s
     const sortedHistory = useMemo(() => {
         return history.sort((a, b) => (b.createdAt as any).toMillis() - (a.createdAt as any).toMillis());
     }, [history]);
+    
+    const toggleExpand = (id: string) => {
+        setExpandedId(expandedId === id ? null : id);
+    }
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -118,36 +123,39 @@ const FeedbackView: React.FC<FeedbackViewProps> = ({ user, t, getThemeClasses, s
                          ) : sortedHistory.length === 0 ? (
                             <p className="text-center text-gray-500 italic py-8">{t('no_feedback_history')}</p>
                          ) : (
-                            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
                                 {sortedHistory.map(item => (
-                                    <div key={item.id} className="p-4 rounded-lg bg-gray-50 border border-gray-200">
-                                        <div className="flex justify-between items-start">
-                                            <p className="font-bold text-gray-800">{item.subject}</p>
-                                            <span className={`text-xs font-semibold px-2 py-1 rounded-full ${item.status === 'replied' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
-                                                {t(`status_${item.status}`)}
-                                            </span>
-                                        </div>
-                                        <p className="text-xs text-gray-500 mb-2">{(item.createdAt as any).toDate().toLocaleString()}</p>
-                                        
-                                        <div className="space-y-3 mt-2">
-                                            {/* User's original message */}
-                                            <div className="flex items-start gap-2.5">
-                                                <div className="p-2 bg-gray-200 rounded-full"><User size={16} /></div>
-                                                <div className="flex flex-col w-full max-w-[320px] leading-1.5 p-3 border-gray-200 bg-gray-100 rounded-e-xl rounded-es-xl">
-                                                    <p className="text-sm font-normal text-gray-900">{item.message}</p>
-                                                </div>
+                                    <div key={item.id} className="p-2 rounded-lg bg-gray-50 border border-gray-200">
+                                        <button onClick={() => toggleExpand(item.id)} className="w-full text-left">
+                                            <div className="flex justify-between items-start">
+                                                <p className="font-bold text-gray-800">{item.subject}</p>
+                                                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${item.status === 'replied' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                                                    {t(`status_${item.status}`)}
+                                                </span>
                                             </div>
-                                            
-                                            {/* Admin replies */}
-                                            {item.replies?.map((reply, index) => (
-                                                <div key={index} className="flex items-start gap-2.5 justify-end">
-                                                    <div className="flex flex-col w-full max-w-[320px] leading-1.5 p-3 border-gray-200 bg-purple-100 rounded-s-xl rounded-ee-xl">
-                                                        <p className="text-sm font-normal text-gray-900">{reply.text}</p>
+                                            <p className="text-xs text-gray-500 mb-2">{(item.createdAt as any).toDate().toLocaleString()}</p>
+                                        </button>
+                                        {expandedId === item.id && (
+                                            <div className="space-y-3 mt-2 pt-3 border-t">
+                                                {/* User's original message */}
+                                                <div className="flex items-start gap-2.5">
+                                                    <div className="p-2 bg-gray-200 rounded-full"><User size={16} /></div>
+                                                    <div className="flex flex-col w-full max-w-xs leading-1.5 p-3 border-gray-200 bg-gray-100 rounded-e-xl rounded-es-xl">
+                                                        <p className="text-sm font-normal text-gray-900">{item.message}</p>
                                                     </div>
-                                                    <div className={`p-2 rounded-full ${getThemeClasses('bg')}`}><Shield size={16} className="text-white"/></div>
                                                 </div>
-                                            ))}
-                                        </div>
+                                                
+                                                {/* Admin replies */}
+                                                {item.replies?.map((reply, index) => (
+                                                    <div key={index} className="flex items-start gap-2.5 justify-end">
+                                                        <div className="flex flex-col w-full max-w-xs leading-1.5 p-3 border-gray-200 bg-purple-100 rounded-s-xl rounded-ee-xl">
+                                                            <p className="text-sm font-normal text-gray-900">{reply.text}</p>
+                                                        </div>
+                                                        <div className={`p-2 rounded-full ${getThemeClasses('bg')}`}><Shield size={16} className="text-white"/></div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

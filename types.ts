@@ -1,4 +1,3 @@
-
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 
@@ -80,6 +79,15 @@ export interface ToDoTask {
     createdAt: firebase.firestore.Timestamp;
     updatedAt?: firebase.firestore.Timestamp;
     reminderAt?: firebase.firestore.Timestamp;
+    completedAt?: firebase.firestore.Timestamp;
+}
+
+export interface StudySession {
+    id: string;
+    userId: string;
+    date: firebase.firestore.Timestamp;
+    durationMinutes: number;
+    taskId?: string | null;
 }
 
 export interface Flashcard {

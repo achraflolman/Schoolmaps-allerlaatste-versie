@@ -1,4 +1,5 @@
 
+
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -6,7 +7,7 @@ import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react
 
 import { auth, db, appId, storage, EmailAuthProvider, Timestamp, arrayUnion, increment } from './services/firebase';
 import { translations, subjectDisplayTranslations, defaultHomeLayout } from './constants';
-import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan } from './types';
+import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan, StudySession } from './types';
 
 import CustomModal from './components/ui/Modal';
 import BroadcastModal from './components/new/BroadcastModal';
@@ -34,6 +35,7 @@ import ProgressView from './components/views/ProgressView';
 import StudyPlannerView from './components/views/StudyPlannerView';
 import AIChatView from './components/views/AIChatView';
 import AISetupView from './components/views/AISetupView';
+import SubjectSelectionView from './components/views/SubjectSelectionView';
 
 
 type AppStatus = 'initializing' | 'unauthenticated' | 'authenticated' | 'awaiting-verification';
@@ -145,6 +147,8 @@ const MainAppLayout: React.FC<{
     allUserFiles: FileData[];
     allUserNotes: Note[];
     allUserFlashcardSets: FlashcardSet[];
+    allUserTasks: ToDoTask[];
+    allStudySessions: StudySession[];
     // Props for SettingsView
     language: 'nl' | 'en';
     setLanguage: (lang: 'nl' | 'en') => void;
@@ -178,7 +182,7 @@ const MainAppLayout: React.FC<{
 }> = ({
     user, t, tSubject, getThemeClasses, showAppModal, copyTextToClipboard, setIsAvatarModalOpen,
     handleLogout, currentView, setCurrentView, currentSubject, setCurrentSubject, handleGoHome,
-    subjectFiles, searchQuery, setSearchQuery, userEvents, userStudyPlans, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets,
+    subjectFiles, searchQuery, setSearchQuery, userEvents, userStudyPlans, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions,
     language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, closeAppModal, notifications, unreadCount, showBroadcast,
     focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, addCalendarEvent, removeCalendarEvent
 }) => {
@@ -207,11 +211,14 @@ const MainAppLayout: React.FC<{
 
     const mainContent = (
         <div>
-            {currentView === 'home' && !currentSubject && <HomeView {...{ user, setCurrentView, t, getThemeClasses, tSubject, setCurrentSubject, recentFiles, userEvents, language }} />}
+            {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, tSubject, userEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView }} />}
             {currentView === 'home' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
+            
+            {currentView === 'files' && !currentSubject && <SubjectSelectionView {...{ user, t, tSubject, getThemeClasses, setCurrentSubject }} />}
+            {currentView === 'files' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
+
             {currentView === 'calendar' && <CalendarView {...{ userEvents, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user }} />}
             {currentView === 'planner' && <StudyPlannerView {...{ userStudyPlans, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user }} />}
-            {currentView === 'notes' && <NotesView {...{ userId: user.uid, user, t, tSubject, getThemeClasses, showAppModal }} />}
             {currentView === 'tools' && <ToolsView {...toolsViewProps} />}
             {currentView === 'settings' && <SettingsView {...{ user, t, getThemeClasses, language, setLanguage, themeColor, setThemeColor, showAppModal, tSubject, setCurrentView, onProfileUpdate, fontFamily, setFontFamily, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, setIsAvatarModalOpen }} />}
             {currentView === 'notifications' && <NotificationsView {...{ user, t, getThemeClasses, notifications, setCurrentView, onProfileUpdate, showBroadcast, showAppModal }} />}
@@ -399,10 +406,12 @@ const App: React.FC = () => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
     
-    // Data for Progress View
+    // Data for Progress View & Home View Dashboard
     const [allUserFiles, setAllUserFiles] = useState<FileData[]>([]);
     const [allUserNotes, setAllUserNotes] = useState<Note[]>([]);
     const [allUserFlashcardSets, setAllUserFlashcardSets] = useState<FlashcardSet[]>([]);
+    const [allUserTasks, setAllUserTasks] = useState<ToDoTask[]>([]);
+    const [allStudySessions, setAllStudySessions] = useState<StudySession[]>([]);
 
     // Persistent Study Timer State
     const [focusMinutes, setFocusMinutes] = useState(25);
@@ -517,10 +526,19 @@ const App: React.FC = () => {
         
         showAppModal({ text: t(completedMode === 'focus' ? 'focus_session_complete' : 'break_session_complete')});
         
+        if (completedMode === 'focus' && user?.uid && user.uid !== 'guest-user') {
+            db.collection(`artifacts/${appId}/users/${user.uid}/studySessions`).add({
+                userId: user.uid,
+                date: Timestamp.now(),
+                durationMinutes: focusMinutes,
+                taskId: selectedTaskForTimer?.id || null,
+            }).catch(error => console.error("Failed to log study session:", error));
+        }
+
         const newMode = completedMode === 'focus' ? 'break' : 'focus';
         setTimerMode(newMode);
         setIsTimerActive(false); 
-    }, [showAppModal, t]);
+    }, [showAppModal, t, user?.uid, focusMinutes, selectedTaskForTimer]);
 
     useEffect(() => {
         let interval: ReturnType<typeof setInterval> | null = null;
@@ -589,6 +607,8 @@ const App: React.FC = () => {
             setAllUserNotes([]);
             setAllUserFlashcardSets([]);
             setUserStudyPlans([]);
+            setAllUserTasks([]);
+            setAllStudySessions([]);
             return;
         }
 
@@ -684,7 +704,7 @@ const App: React.FC = () => {
             if (hasNewReplies) await batch.commit();
         });
 
-        // Fetch all data for progress view
+        // Fetch all data for progress view & home dashboard
         const allFilesQuery = db.collection(`artifacts/${appId}/public/data/files`).where('ownerId', '==', user.uid);
         const unsubscribeAllFiles = allFilesQuery.onSnapshot((snapshot) => {
             setAllUserFiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FileData)));
@@ -700,6 +720,16 @@ const App: React.FC = () => {
             setAllUserFlashcardSets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FlashcardSet)));
         });
 
+        const allTasksQuery = db.collection(`artifacts/${appId}/users/${user.uid}/tasks`);
+        const unsubscribeAllTasks = allTasksQuery.onSnapshot((snapshot) => {
+            setAllUserTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ToDoTask)));
+        });
+
+        const allSessionsQuery = db.collection(`artifacts/${appId}/users/${user.uid}/studySessions`);
+        const unsubscribeAllSessions = allSessionsQuery.onSnapshot((snapshot) => {
+            setAllStudySessions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudySession)));
+        });
+
 
         return () => {
             unsubscribeEvents();
@@ -711,6 +741,8 @@ const App: React.FC = () => {
             unsubscribeAllNotes();
             unsubscribeAllSets();
             unsubscribePlans();
+            unsubscribeAllTasks();
+            unsubscribeAllSessions();
         };
 
     }, [user, isAdmin, t]);
@@ -844,7 +876,7 @@ const App: React.FC = () => {
     
         // Delete all private user collections
         const userRoot = `artifacts/${appId}/users/${uid}`;
-        const collectionsToDelete = ['calendarEvents', 'notes', 'tasks', 'notifications', 'studyPlans'];
+        const collectionsToDelete = ['calendarEvents', 'notes', 'tasks', 'notifications', 'studyPlans', 'studySessions'];
         for (const coll of collectionsToDelete) {
             await batchDelete(db.collection(`${userRoot}/${coll}`));
         }
@@ -1213,7 +1245,7 @@ const App: React.FC = () => {
 
     const authContainerClasses = (appStatus === 'unauthenticated' || appStatus === 'initializing' || appStatus === 'awaiting-verification' || (showIntro && !user) ) ? getAuthThemeClasses('bg') : '';
 
-    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, userEvents, userStudyPlans, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets, addCalendarEvent: addCalendarEventFromAI, removeCalendarEvent: removeCalendarEventFromAI };
+    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, userEvents, userStudyPlans, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions, addCalendarEvent: addCalendarEventFromAI, removeCalendarEvent: removeCalendarEventFromAI };
     
     const isLoading = !isAppReadyForDisplay || !isMinLoadingTimePassed;
 

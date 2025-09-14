@@ -166,7 +166,12 @@ const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeCl
         showAppModal({ text: t('error_guest_action_not_allowed') });
         return;
     }
-    await db.doc(`artifacts/${appId}/users/${userId}/tasks/${id}`).update({ completed: !completed });
+    // FIX: Use Partial<ToDoTask> to avoid direct reference to firebase.firestore.Timestamp type, resolving the namespace error.
+    const updateData: Partial<ToDoTask> = { completed: !completed };
+    if (!completed) { // If task is being marked as complete
+        updateData.completedAt = Timestamp.now();
+    }
+    await db.doc(`artifacts/${appId}/users/${userId}/tasks/${id}`).update(updateData);
     showAppModal({text: t('task_updated_success')});
   };
   
@@ -203,6 +208,7 @@ const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeCl
     if (reminderDateTime && Notification.permission === 'default') {
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
+            // FIX: Corrected a typo from 'showAppAppModal' to 'showAppModal'.
             showAppModal({ text: t('notifications_denied_prompt') });
             return;
         }

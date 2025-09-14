@@ -1,7 +1,7 @@
 
 
 import React from 'react';
-import { Book, CalendarDays, Settings, X, BrainCircuit, BarChart3, FileText, Bell, Flame, LifeBuoy, Edit, ClipboardList, Bot } from 'lucide-react';
+import { Book, CalendarDays, Settings, X, BrainCircuit, BarChart3, Bell, Flame, LifeBuoy, Edit, ClipboardList, Bot, Files } from 'lucide-react';
 import type { AppUser } from '../../types';
 
 interface SidebarProps {
@@ -19,6 +19,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen, sidebarRef, t, getThemeClasses, setCurrentView, currentView, currentSubject, setIsAvatarModalOpen }) => {
   const navItems = [
+    { id: 'files', label: t('my_files'), icon: <Files className="w-5 h-5 mr-3" />, view: 'files' },
     { id: 'calendar', label: t('calendar'), icon: <CalendarDays className="w-5 h-5 mr-3" />, view: 'calendar' },
     { id: 'planner', label: t('study_planner'), icon: <ClipboardList className="w-5 h-5 mr-3" />, view: 'planner' },
     { id: 'tools', label: t('extra_tools'), icon: <BrainCircuit className="w-5 h-5 mr-3" />, view: 'tools' },
@@ -91,16 +92,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen
             >
               <Book className="w-5 h-5 mr-3" />
               {t('my_subjects')}
-            </button>
-            <button
-              key='notes'
-              type="button"
-              onClick={() => handleNavClick('notes')}
-              className={`w-full text-left py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center text-gray-700
-                ${currentView === 'notes' ? `${getThemeClasses('bg')} text-white shadow-md` : `hover:${getThemeClasses('bg-light')}`}`}
-            >
-              <FileText className="w-5 h-5 mr-3" />
-              {t('notes')}
             </button>
           {navItems.map(item => (
             <button

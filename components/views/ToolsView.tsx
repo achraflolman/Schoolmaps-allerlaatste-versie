@@ -1,11 +1,12 @@
 
 
 import React, { useState } from 'react';
-import { BookOpen, Timer, ListTodo, BarChart3 } from 'lucide-react';
+import { BookOpen, Timer, ListTodo, BarChart3, FileText } from 'lucide-react';
 import FlashcardsView from './tools/FlashcardsView';
 import StudyTimerView from './tools/StudyTimerView';
 import ToDoListView from './tools/ToDoListView';
 import ProgressView from '../views/ProgressView';
+import NotesView from './tools/NotesView';
 
 import type { AppUser, ModalContent, ToDoTask, CalendarEvent, FileData, Note, FlashcardSet } from '../../types';
 
@@ -45,6 +46,7 @@ const ToolsView: React.FC<ToolsViewProps> = (props) => {
     timer: <StudyTimerView {...props} />,
     todo: <ToDoListView {...props} />,
     flashcards: <FlashcardsView {...props} />,
+    notes: <NotesView {...props} />,
     progress: <ProgressView {...props} />,
   };
   
@@ -52,6 +54,7 @@ const ToolsView: React.FC<ToolsViewProps> = (props) => {
       { id: 'timer', label: props.t('study_timer'), icon: <Timer/> },
       { id: 'todo', label: props.t('todo_list'), icon: <ListTodo/> },
       { id: 'flashcards', label: props.t('flashcards'), icon: <BookOpen/> },
+      { id: 'notes', label: props.t('notes'), icon: <FileText/> },
       { id: 'progress', label: props.t('progress'), icon: <BarChart3/> },
   ];
 

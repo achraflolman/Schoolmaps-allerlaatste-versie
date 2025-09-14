@@ -36,7 +36,6 @@ const SortableItem = React.memo(({ id, t }: { id: string, t: any }) => {
     };
 
     const widgetNames: { [key: string]: string } = {
-        subjects: t('widget_subjects'),
         agenda: t('widget_agenda'),
         files: t('widget_files'),
     };
@@ -62,7 +61,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
   });
 
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>(user.selectedSubjects || []);
-  const [homeLayout, setHomeLayout] = useState<string[]>(user.homeLayout || ['subjects', 'agenda', 'files']);
+  const [homeLayout, setHomeLayout] = useState<string[]>(user.homeLayout || ['agenda', 'files']);
   const [customSubjects, setCustomSubjects] = useState<string[]>(user.customSubjects || []);
   const [customSubjectInput, setCustomSubjectInput] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(user.notificationsEnabled ?? true);
@@ -75,7 +74,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
       educationLevel: user.educationLevel || '',
     });
     setSelectedSubjects(user.selectedSubjects || []);
-    setHomeLayout(user.homeLayout || ['subjects', 'agenda', 'files']);
+    setHomeLayout(user.homeLayout || ['agenda', 'files']);
     setCustomSubjects(user.customSubjects || []);
     setNotificationsEnabled(user.notificationsEnabled ?? true);
   }, [user]);
