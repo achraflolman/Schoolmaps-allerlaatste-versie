@@ -1,45 +1,54 @@
+// FIX: Import FirebaseTimestamp to resolve type errors within this file.
 import type { FirebaseTimestamp } from './services/firebase';
 
+export interface Flashcard {
+    id: string;
+    setId: string;
+    question: string;
+    answer: string;
+    ownerId: string;
+    createdAt: FirebaseTimestamp;
+    dueDate?: FirebaseTimestamp;
+    interval?: number;
+    easeFactor?: number;
+}
+
+// FIX: Added export for AppUser type.
 export interface AppUser {
     uid: string;
     email: string;
     userName: string;
     profilePictureUrl: string | null;
-    createdAt: FirebaseTimestamp | Date;
+    isAdmin?: boolean;
+    createdAt?: FirebaseTimestamp;
     selectedSubjects: string[];
+    customSubjects: string[];
     schoolName: string;
     className: string;
     educationLevel: string;
     languagePreference: 'nl' | 'en';
     themePreference: string;
-    fontPreference?: string;
-    homeLayout?: string[];
-    customSubjects?: string[];
-    lastLoginDate?: FirebaseTimestamp | Date;
+    fontPreference: string;
+    homeLayout: string[];
     streakCount?: number;
-    notificationsEnabled?: boolean;
-    isAdmin?: boolean;
-    disabled?: boolean;
-    isVerifiedByEmail?: boolean;
+    lastLoginDate?: FirebaseTimestamp;
+    notificationsEnabled: boolean;
+    disabled: boolean;
+    isVerifiedByEmail: boolean;
     focusDuration?: number;
     breakDuration?: number;
-    dismissedBroadcastIds?: string[];
-    dismissedFeedbackIds?: string[];
-    aiBotName?: string;
-    aiBotAvatarUrl?: string | null;
-    hasCompletedOnboarding?: boolean;
+    dismissedBroadcastIds: string[];
+    dismissedFeedbackIds: string[];
+    aiBotName: string;
+    aiBotAvatarUrl: string | null;
+    hasCompletedOnboarding: boolean;
 }
 
-export interface AdminSettings {
-    themePreference: string;
-    fontPreference: string;
-    pinProtectionEnabled: boolean;
-}
-
+// FIX: Added export for FileData type.
 export interface FileData {
     id: string;
     title: string;
-    description: string;
+    description?: string;
     subject: string;
     ownerId: string;
     createdAt: FirebaseTimestamp;
@@ -47,19 +56,69 @@ export interface FileData {
     storagePath: string;
 }
 
+// FIX: Added export for CalendarEvent type.
 export interface CalendarEvent {
     id: string;
     title: string;
     description?: string;
-    start: FirebaseTimestamp;
-    end: FirebaseTimestamp;
     type: 'test' | 'presentation' | 'homework' | 'oral' | 'other' | 'work' | 'school';
     subject: string;
+    start: FirebaseTimestamp;
+    end: FirebaseTimestamp;
     ownerId: string;
     createdAt: FirebaseTimestamp;
     updatedAt?: FirebaseTimestamp;
 }
 
+// FIX: Added export for ModalContent type.
+export interface ModalContent {
+    text: string;
+    confirmAction?: () => void;
+    cancelAction?: () => void;
+}
+
+// FIX: Added export for Notification type.
+export interface Notification {
+    id: string;
+    title: string;
+    text: string;
+    type: 'admin' | 'streak' | 'feedback_reply' | 'flashcard_share' | 'system';
+    read: boolean;
+    createdAt: FirebaseTimestamp;
+    broadcastId?: string;
+    feedbackId?: string;
+    flashcardSetId?: string;
+    subject?: string;
+}
+
+// FIX: Added export for BroadcastData type.
+export interface BroadcastData {
+    id: string;
+    title: string;
+    message: string;
+    sender: string;
+    createdAt: FirebaseTimestamp;
+}
+
+// FIX: Added export for ToDoTask type.
+export interface ToDoTask {
+    id: string;
+    text: string;
+    completed: boolean;
+    ownerId: string;
+    createdAt: FirebaseTimestamp;
+    completedAt?: FirebaseTimestamp;
+    reminderAt?: FirebaseTimestamp;
+}
+
+// FIX: Added export for AdminSettings type.
+export interface AdminSettings {
+    themePreference: string;
+    pinProtectionEnabled: boolean;
+    fontPreference: string;
+}
+
+// FIX: Added export for Note type.
 export interface Note {
     id: string;
     title: string;
@@ -70,59 +129,35 @@ export interface Note {
     updatedAt?: FirebaseTimestamp;
 }
 
-export interface ToDoTask {
-    id: string;
-    text: string;
-    completed: boolean;
-    ownerId: string;
-    createdAt: FirebaseTimestamp;
-    updatedAt?: FirebaseTimestamp;
-    reminderAt?: FirebaseTimestamp;
-    completedAt?: FirebaseTimestamp;
-}
-
-export interface StudySession {
-    id: string;
-    userId: string;
-    date: FirebaseTimestamp;
-    durationMinutes: number;
-    taskId?: string | null;
-}
-
-export interface Flashcard {
-    id: string;
-    question: string;
-    answer: string;
-    ownerId: string;
-    createdAt: FirebaseTimestamp;
-    dueDate?: FirebaseTimestamp;
-    interval?: number;
-    easeFactor?: number;
-}
-
+// FIX: Added export for FlashcardSet type.
 export interface FlashcardSet {
-    id:string;
+    id: string;
     name: string;
     subject: string;
     ownerId: string;
     createdAt: FirebaseTimestamp;
     cardCount: number;
+    isShared?: boolean;
+    sharerName?: string;
 }
 
-export interface StudyScheduleItem {
-  day: string; // YYYY-MM-DD
-  time: string;
-  task: string;
-  tip: string;
-  subject?: string;
-}
-
+// FIX: Added export for StudyPlanSubject type.
 export interface StudyPlanSubject {
     subject: string;
     topic: string;
     amount: string;
 }
 
+// FIX: Added export for StudyScheduleItem type.
+export interface StudyScheduleItem {
+    day: string;
+    time: string;
+    subject: string;
+    task: string;
+    tip: string;
+}
+
+// FIX: Added export for StudyPlan type.
 export interface StudyPlan {
     id: string;
     userId: string;
@@ -133,38 +168,24 @@ export interface StudyPlan {
     createdAt: FirebaseTimestamp;
 }
 
-
-export interface ModalContent {
-    text: string;
-    confirmAction?: () => void;
-    cancelAction?: () => void;
-}
-
-export interface Notification {
+// FIX: Added export for StudySession type.
+export interface StudySession {
     id: string;
-    title?: string;
-    text: string;
-    type: 'system' | 'admin' | 'streak' | 'feedback_reply';
-    read: boolean;
-    createdAt: FirebaseTimestamp;
-    broadcastId?: string;
-    feedbackId?: string;
+    userId: string;
+    date: FirebaseTimestamp;
+    durationMinutes: number;
+    taskId: string | null;
 }
 
-export interface BroadcastData {
-    id: string;
-    title: string;
-    message: string;
-    createdAt: FirebaseTimestamp;
-}
-
+// FIX: Added export for FeedbackReply type.
 export interface FeedbackReply {
     text: string;
     repliedAt: FirebaseTimestamp;
-    repliedBy: 'admin';
-    isAdminReply: true;
+    repliedBy: string;
+    isAdminReply: boolean;
 }
 
+// FIX: Added export for Feedback type.
 export interface Feedback {
     id: string;
     userId: string;
@@ -174,5 +195,5 @@ export interface Feedback {
     message: string;
     status: 'new' | 'replied';
     createdAt: FirebaseTimestamp;
-    replies?: FeedbackReply[];
+    replies: FeedbackReply[];
 }

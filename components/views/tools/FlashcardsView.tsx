@@ -1,9 +1,9 @@
-
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, appId, Timestamp, increment } from '../../../services/firebase';
+import { GoogleGenAI, Type } from '@google/genai';
 import type { Flashcard, FlashcardSet, AppUser, ModalContent } from '../../../types';
-import { PlusCircle, Trash2, ArrowLeft, Save, BookOpen, Settings, Brain, BarChart, RotateCcw, X, Check, Loader2, FileQuestion, Star, Layers } from 'lucide-react';
+import { PlusCircle, Trash2, ArrowLeft, Save, BookOpen, Settings, Brain, BarChart, RotateCcw, X, Check, Loader2, FileQuestion, Star, Layers, Sparkles, Share2, ChevronDown } from 'lucide-react';
+import ShareSetModal from './ShareSetModal';
 
 interface FlashcardsViewProps {
   userId: string;
@@ -14,7 +14,7 @@ interface FlashcardsViewProps {
   showAppModal: (content: ModalContent) => void;
 }
 
-type ViewType = 'subjects' | 'sets' | 'mode-selection' | 'manage' | 'learn' | 'cram' | 'mc' | 'summary' | 'all-learned';
+type ViewType = 'set-list' | 'mode-selection' | 'manage' | 'learn' | 'cram' | 'mc' | 'summary' | 'all-learned';
 interface SessionStats { correct: number; incorrect: number; total: number; }
 
 const shuffleArray = (array: any[]) => {
@@ -27,63 +27,30 @@ const shuffleArray = (array: any[]) => {
 
 // --- Main Router Component ---
 const FlashcardsView: React.FC<FlashcardsViewProps> = (props) => {
-  const { user, t, getThemeClasses, tSubject } = props;
-  const [view, setView] = useState<ViewType>('subjects');
-  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+  const [view, setView] = useState<ViewType>('set-list');
   const [selectedSet, setSelectedSet] = useState<FlashcardSet | null>(null);
   const [lastSessionStats, setLastSessionStats] = useState<SessionStats | null>(null);
   const [lastSessionMode, setLastSessionMode] = useState<ViewType | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [setForSharing, setSetForSharing] = useState<FlashcardSet | null>(null);
 
   const handleSessionComplete = (stats: SessionStats, mode: ViewType) => {
     setLastSessionStats(stats);
     setLastSessionMode(mode);
     setView('summary');
   };
-
-  const handleSelectSubject = (subject: string) => {
-    setSelectedSubject(subject);
-    setView('sets');
+  
+  const openShareModal = (set: FlashcardSet) => {
+    setSetForSharing(set);
+    setIsShareModalOpen(true);
   };
 
   const goBack = () => {
-    switch (view) {
-        case 'summary':
-        case 'learn':
-        case 'cram':
-        case 'mc':
-        case 'all-learned':
-            setView('mode-selection');
-            break;
-        case 'mode-selection':
-        case 'manage':
-            setView('sets');
-            break;
-        case 'sets':
-            setSelectedSubject(null);
-            setView('subjects');
-            break;
-    }
-  }
-
-  const userSubjects = useMemo(() => {
-    const combined = new Set([...(user.selectedSubjects || []), ...(user.customSubjects || [])]);
-    return Array.from(combined);
-  }, [user.selectedSubjects, user.customSubjects]);
+    setView('set-list');
+  };
 
   const Views: { [key: string]: React.ReactNode } = {
-    subjects: (
-        <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4`}>
-            <h3 className="font-bold text-lg text-center">{t('select_a_subject_first')}</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {userSubjects.map(s => (
-                    <button key={s} onClick={() => handleSelectSubject(s)} className={`p-4 bg-white rounded-lg shadow-md font-semibold hover:shadow-lg hover:-translate-y-1 transition-all duration-200 ${getThemeClasses('text-strong')} focus:outline-none focus:ring-2 ${getThemeClasses('ring')}`}>
-                        {tSubject(s)}
-                    </button>
-                ))}
-            </div>
-        </div>
-    ),
-    sets: selectedSubject && <SetSelectionView {...props} selectedSubject={selectedSubject} setSelectedSet={setSelectedSet} setView={setView} onBack={goBack} />,
+    'set-list': <SetListView {...props} setSelectedSet={setSelectedSet} setView={setView} onShare={openShareModal} />,
     'mode-selection': selectedSet && <ModeSelectionView set={selectedSet} setView={setView} onBack={goBack} {...props} />,
     manage: selectedSet && <CardManagerView {...props} set={selectedSet} onBack={goBack} />,
     learn: selectedSet && <LearnSessionView {...props} set={selectedSet} setView={setView} onSessionComplete={handleSessionComplete}/>,
@@ -93,36 +60,125 @@ const FlashcardsView: React.FC<FlashcardsViewProps> = (props) => {
     'all-learned': selectedSet && <AllCardsLearnedView {...props} set={selectedSet} setView={setView} />
   }
 
-  return <div className="animate-fade-in">{Views[view]}</div>;
+  return (
+    <div className="animate-fade-in">
+      {setForSharing && <ShareSetModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} set={setForSharing} {...props}/>}
+      {Views[view]}
+    </div>
+  );
 };
 
-
-// --- Sub-Views for Flashcards ---
-
-const SetSelectionView: React.FC<any> = ({ onBack, selectedSubject, setSelectedSet, setView, ...props }) => {
-    const { userId, t, tSubject, getThemeClasses, showAppModal, user } = props;
-    const [sets, setSets] = useState<FlashcardSet[]>([]);
-    const [newSetName, setNewSetName] = useState('');
+const CustomDropdown: React.FC<{
+    options: { value: string; label: string }[];
+    selectedValue: string;
+    onSelect: (value: string) => void;
+    getThemeClasses: (variant: string) => string;
+}> = ({ options, selectedValue, onSelect, getThemeClasses }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = React.useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!selectedSubject || user.uid === 'guest-user') { setSets([]); return; }
-        const q = db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks`).where('subject', '==', selectedSubject).orderBy('createdAt', 'desc');
-        const unsubscribe = q.onSnapshot(snapshot => {
-            setSets(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FlashcardSet)));
-        }, (error) => {
-            console.error("Error fetching flashcard sets:", error);
-            showAppModal({text: t('error_failed_to_load_sets')});
-        });
-        return () => unsubscribe();
-    }, [userId, selectedSubject, user.uid, showAppModal, t]);
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const selectedLabel = options.find(opt => opt.value === selectedValue)?.label || 'Select';
+
+    return (
+        <div className="relative w-full sm:w-auto" ref={dropdownRef}>
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full sm:w-56 flex items-center justify-between p-2 border rounded-lg bg-white shadow-sm text-left"
+            >
+                <span className="font-semibold">{selectedLabel}</span>
+                <ChevronDown className={`w-5 h-5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isOpen && (
+                <div className="absolute top-full mt-1 w-full sm:w-56 bg-white border rounded-lg shadow-lg z-10 animate-fade-in-fast overflow-y-auto max-h-60">
+                    {options.map(({ value, label }) => (
+                        <button
+                            key={value}
+                            onClick={() => {
+                                onSelect(value);
+                                setIsOpen(false);
+                            }}
+                            className={`w-full text-left p-2 hover:bg-gray-100 ${selectedValue === value ? getThemeClasses('text') + ' font-bold' : ''}`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// --- Sub-Views for Flashcards ---
+const SetListView: React.FC<any> = ({ setSelectedSet, setView, onShare, ...props }) => {
+    const { userId, t, tSubject, getThemeClasses, showAppModal, user } = props;
+    const [allSets, setAllSets] = useState<FlashcardSet[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [selectedSubject, setSelectedSubject] = useState('all');
+    const [newSetName, setNewSetName] = useState('');
+
+    const userSubjects = useMemo(() => Array.from(new Set([...(user.selectedSubjects || []), ...(user.customSubjects || [])])), [user.selectedSubjects, user.customSubjects]);
+    
+    const dropdownOptions = useMemo(() => [
+      { value: 'all', label: t('all_subjects_option') },
+      ...userSubjects.map(s => ({ value: s, label: tSubject(s) }))
+    ], [userSubjects, t, tSubject]);
+
+    useEffect(() => {
+        if (user.uid === 'guest-user') { setIsLoading(false); return; }
+        
+        const ownedSetsQuery = db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks`).orderBy('createdAt', 'desc');
+        const sharedSetsQuery = db.collection(`artifacts/${appId}/public/data/sharedSets`).where('recipientEmail', '==', user.email);
+
+        const unsubOwned = ownedSetsQuery.onSnapshot(snap => {
+            const owned = snap.docs.map(d => ({ id: d.id, ...d.data() } as FlashcardSet));
+            setAllSets(prev => [...owned, ...prev.filter(s => s.isShared)]);
+            setIsLoading(false);
+        }, err => { console.error(err); setIsLoading(false); });
+
+        const unsubShared = sharedSetsQuery.onSnapshot(snap => {
+            const shared = snap.docs.map(d => {
+                const data = d.data();
+                return {
+                    id: data.setId, name: data.setName, subject: data.subject, ownerId: data.sharerId,
+                    cardCount: data.cardCount || 0, createdAt: data.createdAt, isShared: true, sharerName: data.sharerName,
+                } as FlashcardSet
+            });
+            setAllSets(prev => [...shared, ...prev.filter(s => !s.isShared)]);
+            setIsLoading(false);
+        }, err => { console.error(err); setIsLoading(false); });
+
+        return () => { unsubOwned(); unsubShared(); };
+    }, [userId, user.email, user.uid]);
+    
+    const filteredSets = useMemo(() => {
+        if (selectedSubject === 'all') return allSets;
+        return allSets.filter(s => s.subject === selectedSubject);
+    }, [selectedSubject, allSets]);
 
     const handleCreateSet = async (e: React.FormEvent) => {
         e.preventDefault();
         if (user.uid === 'guest-user') { showAppModal({ text: t('error_guest_action_not_allowed') }); return; }
+        const subjectForNewSet = (selectedSubject === 'all' && userSubjects.length > 0) ? userSubjects[0] : selectedSubject;
+        if(subjectForNewSet === 'all'){ showAppModal({ text: t('select_a_subject_first') }); return; }
         if (!newSetName.trim()) { showAppModal({ text: t('error_empty_set_name') }); return; }
-        await db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks`).add({ name: newSetName, subject: selectedSubject, ownerId: userId, createdAt: Timestamp.now(), cardCount: 0 });
+        
+        const docRef = await db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks`).add({ name: newSetName, subject: subjectForNewSet, ownerId: userId, createdAt: Timestamp.now(), cardCount: 0 });
+        const newSet = { id: docRef.id, name: newSetName, subject: subjectForNewSet, ownerId: userId, createdAt: Timestamp.now(), cardCount: 0 };
+        
         showAppModal({ text: t('set_added_success') });
         setNewSetName('');
+        setSelectedSet(newSet);
+        setView('manage');
     };
     
     const handleDeleteSet = async (set: FlashcardSet) => {
@@ -130,7 +186,8 @@ const SetSelectionView: React.FC<any> = ({ onBack, selectedSubject, setSelectedS
             confirmAction: async () => {
                 const batch = db.batch();
                 const setRef = db.doc(`artifacts/${appId}/users/${userId}/flashcardDecks/${set.id}`);
-                const cardsSnapshot = await setRef.collection('cards').get();
+                const cardsQuery = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', set.id);
+                const cardsSnapshot = await cardsQuery.get();
                 cardsSnapshot.forEach(cardDoc => batch.delete(cardDoc.ref));
                 batch.delete(setRef);
                 await batch.commit();
@@ -142,27 +199,47 @@ const SetSelectionView: React.FC<any> = ({ onBack, selectedSubject, setSelectedS
 
     return (
         <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4`}>
-            <button onClick={onBack} className="font-semibold flex items-center gap-1 hover:underline"><ArrowLeft size={16}/> {t('back_to_subjects_selection')}</button>
-            <h3 className="font-bold text-lg text-center">{t('sets_for_subject', { subject: tSubject(selectedSubject) })}</h3>
-            <form onSubmit={handleCreateSet} className="bg-white p-3 rounded-lg shadow-sm flex gap-2">
-                <input value={newSetName} onChange={e => setNewSetName(e.target.value)} placeholder={t('set_name_placeholder')} className="flex-grow p-2 border rounded-lg"/>
-                <button type="submit" className={`flex items-center justify-center text-white font-bold p-2 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} w-12`}><PlusCircle size={20}/></button>
-            </form>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {sets.length === 0 ? <p className="text-center italic text-gray-500 py-4 md:col-span-2">{t('no_sets_found')}</p> :
-                 sets.map(set => (
-                    <div key={set.id} onClick={() => { setSelectedSet(set); setView('mode-selection'); }} className="bg-white p-4 rounded-lg shadow-md flex flex-col justify-between cursor-pointer hover:shadow-lg hover:-translate-y-1 transition-all">
-                        <div>
-                            <p className="font-bold text-lg">{set.name}</p>
-                            <p className={`text-sm font-semibold ${getThemeClasses('text')}`}>{t('cards_in_set', { count: set.cardCount || 0 })}</p>
+             <div className="flex justify-between items-center flex-wrap gap-2">
+                <CustomDropdown options={dropdownOptions} selectedValue={selectedSubject} onSelect={setSelectedSubject} getThemeClasses={getThemeClasses} />
+                 <form onSubmit={handleCreateSet} className="flex-grow sm:flex-grow-0 flex gap-2">
+                    <input value={newSetName} onChange={e => setNewSetName(e.target.value)} placeholder={t('set_name_placeholder')} className="flex-grow p-2 border rounded-lg"/>
+                    <button type="submit" className={`flex items-center justify-center text-white font-bold p-2 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} w-12`}><PlusCircle size={20}/></button>
+                </form>
+            </div>
+
+            {isLoading ? <div className="text-center p-8"><Loader2 className="animate-spin" /></div> : 
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredSets.length === 0 ? <p className="text-center italic text-gray-500 py-8 md:col-span-2">{t('no_sets_found')}</p> :
+                 filteredSets.map(set => (
+                    <div key={`${set.id}-${set.ownerId}`} className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 flex flex-col overflow-hidden">
+                        <div className="p-4 flex-grow">
+                            <div className="flex justify-between items-start">
+                                <div onClick={() => { setSelectedSet(set); setView('mode-selection'); }} className="cursor-pointer flex-grow pr-2">
+                                    <h4 className="font-bold text-lg text-gray-800 truncate">{set.name}</h4>
+                                    <p className={`text-xs font-semibold uppercase tracking-wider ${getThemeClasses('text')}`}>{tSubject(set.subject)}</p>
+                                    {set.isShared && <p className="text-xs text-gray-500 mt-1">{t('shared_by', { name: set.sharerName })}</p>}
+                                </div>
+                                {!set.isShared && (
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                        <button onClick={(e) => { e.stopPropagation(); onShare(set); }} className="p-2 text-gray-500 hover:bg-blue-100 hover:text-blue-600 rounded-full transition-colors" title={t('share_button')}>
+                                            <Share2 className="w-4 h-4"/>
+                                        </button>
+                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteSet(set); }} className="p-2 text-gray-500 hover:bg-red-100 hover:text-red-600 rounded-full transition-colors" title={t('confirm_delete_set', {name: set.name})}>
+                                            <Trash2 className="w-4 h-4"/>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                        <div className="flex justify-between items-center mt-4 gap-2">
-                             <button onClick={(e) => { e.stopPropagation(); handleDeleteSet(set); }} className="p-2 text-red-500 bg-red-100 hover:bg-red-200 rounded-md transition-colors active:scale-90"><Trash2 className="w-4 h-4"/></button>
-                             <button onClick={(e) => { e.stopPropagation(); setSelectedSet(set); setView('manage'); }} className={`flex items-center gap-2 font-semibold text-sm py-2 px-3 rounded-lg transition-colors active:scale-95 bg-gray-200 hover:bg-gray-300`}><Settings size={16}/> {t('manage_cards')}</button>
+                        <div className="bg-gray-50 px-4 py-3 flex justify-between items-center text-sm">
+                            <div className={`font-semibold ${getThemeClasses('text')}`}>{t('cards_in_set', { count: set.cardCount || 0 })}</div>
+                            <button onClick={() => { setSelectedSet(set); setView('manage'); }} className="flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900 transition-colors">
+                                <Settings size={14}/> {t('manage_cards')}
+                            </button>
                         </div>
                     </div>
                 ))}
-            </div>
+            </div>}
         </div>
     );
 };
@@ -175,7 +252,7 @@ const ModeSelectionView = ({ onBack, set: currentSet, setView, ...props }: any) 
             text: t('reset_srs_confirm'),
             confirmAction: async () => {
                 const batch = db.batch();
-                const cardsRef = db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks/${currentSet.id}/cards`);
+                const cardsRef = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', currentSet.id);
                 const snapshot = await cardsRef.get();
                 snapshot.forEach(cardDoc => {
                     batch.update(cardDoc.ref, {
@@ -201,7 +278,7 @@ const ModeSelectionView = ({ onBack, set: currentSet, setView, ...props }: any) 
       <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4`}>
           <div className="flex justify-between items-center">
             <button onClick={onBack} className="font-semibold flex items-center gap-1 hover:underline"><ArrowLeft size={16}/> {t('back_to_sets')}</button>
-            <button onClick={handleResetProgress} className="text-xs font-semibold text-gray-500 hover:text-red-500 flex items-center gap-1 transition-colors"><RotateCcw size={12}/>{t('reset_srs_progress')}</button>
+            {!currentSet.isShared && <button onClick={handleResetProgress} className="text-xs font-semibold text-gray-500 hover:text-red-500 flex items-center gap-1 transition-colors"><RotateCcw size={12}/>{t('reset_srs_progress')}</button>}
           </div>
           <h3 className="font-bold text-lg text-center">{t('choose_study_mode')}</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -220,86 +297,180 @@ const ModeSelectionView = ({ onBack, set: currentSet, setView, ...props }: any) 
     );
 };
 
-
 const CardManagerView = ({ onBack, set: currentSet, ...props }: any) => {
-    const { userId, t, getThemeClasses, showAppModal, user } = props;
-    const [cardRows, setCardRows] = useState(Array.from({ length: 5 }, () => ({ question: '', answer: '' })));
+    const { userId, t, getThemeClasses, showAppModal } = props;
+    const [editableCards, setEditableCards] = useState<(Flashcard & { isNew?: boolean })[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [aiInput, setAiInput] = useState('');
+
+    useEffect(() => {
+        setIsLoading(true);
+        const q = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', currentSet.id).orderBy('createdAt');
+        const unsubscribe = q.onSnapshot(snapshot => {
+            setEditableCards(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Flashcard)));
+            setIsLoading(false);
+        }, (error) => {
+            showAppModal({text: t('error_failed_to_load_cards')});
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
+    }, [currentSet.id, showAppModal, t]);
+    
+    const handleGenerateWithAI = async () => {
+        if (!aiInput.trim()) return;
+        setIsGenerating(true);
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const prompt = `Parse the following text into flashcards. Each line or item separated by a colon (:) or dash (-) should be a card. The part before the separator is the question, and the part after is the answer. Text: \n\n${aiInput}`;
+            
+            const response = await ai.models.generateContent({
+              model: 'gemini-2.5-flash',
+              contents: prompt,
+              config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      question: { type: Type.STRING },
+                      answer: { type: Type.STRING },
+                    },
+                    required: ['question', 'answer']
+                  },
+                },
+              },
+            });
+
+            const jsonStr = response.text.trim();
+            const newCards = JSON.parse(jsonStr).map((c: any) => ({ ...c, id: `new_${Math.random()}`, setId: currentSet.id, isNew: true, ownerId: userId, createdAt: Timestamp.now() }));
+            setEditableCards(prev => [...prev, ...newCards]);
+            setAiInput('');
+        } catch (error) {
+            console.error(error);
+            showAppModal({ text: t('error_ai_parse_failed') });
+        } finally {
+            setIsGenerating(false);
+        }
+    };
 
      const handleSaveCards = async () => {
-        if (!currentSet) return;
-        if (user.uid === 'guest-user') { showAppModal({ text: t('error_guest_action_not_allowed') }); return; }
+        if (currentSet.isShared) return;
         
         const batch = db.batch();
         const setRef = db.doc(`artifacts/${appId}/users/${userId}/flashcardDecks/${currentSet.id}`);
-        let cardsAddedCount = 0;
+        let newCardsCount = 0;
 
-        cardRows.forEach(row => {
-            if (row.question.trim() && row.answer.trim()) {
-                const cardRef = setRef.collection('cards').doc();
-                // Initialize with SRS data
-                batch.set(cardRef, { 
-                    question: row.question, 
-                    answer: row.answer, 
-                    ownerId: userId, 
-                    createdAt: Timestamp.now(),
-                    dueDate: Timestamp.now(), // Due immediately
-                    interval: 0,
-                    easeFactor: 2.5,
-                });
-                cardsAddedCount++;
+        for (const card of editableCards) {
+            if (card.question.trim() && card.answer.trim()) {
+                if (card.isNew) {
+                    const cardRef = db.collection(`artifacts/${appId}/public/data/flashcards`).doc();
+                    batch.set(cardRef, { 
+                        setId: currentSet.id,
+                        question: card.question, 
+                        answer: card.answer, 
+                        ownerId: userId, 
+                        createdAt: Timestamp.now(), 
+                        dueDate: Timestamp.now(), 
+                        interval: 0, 
+                        easeFactor: 2.5 
+                    });
+                    newCardsCount++;
+                } else {
+                    const cardRef = db.doc(`artifacts/${appId}/public/data/flashcards/${card.id}`);
+                    batch.update(cardRef, { question: card.question, answer: card.answer });
+                }
             }
-        });
-
-        if (cardsAddedCount > 0) {
-            batch.update(setRef, { cardCount: increment(cardsAddedCount) });
-            await batch.commit();
-            showAppModal({ text: t('flashcard_added_success') });
-            setCardRows(Array.from({ length: 5 }, () => ({ question: '', answer: '' })));
-        } else {
-            showAppModal({ text: t('error_empty_flashcard') });
         }
+        
+        if (newCardsCount > 0) {
+            batch.update(setRef, { cardCount: increment(newCardsCount) });
+        }
+        await batch.commit();
+        showAppModal({ text: t('flashcard_added_success') });
      };
+     
+    const handleCardChange = (id: string, field: 'question' | 'answer', value: string) => {
+        setEditableCards(cards => cards.map(c => c.id === id ? { ...c, [field]: value } : c));
+    };
 
-     const handleRowInputChange = (index: number, field: 'question' | 'answer', value: string) => {
-        const newRows = [...cardRows];
-        newRows[index][field] = value;
-        setCardRows(newRows);
-     };
+    const handleAddRow = () => {
+        setEditableCards(prev => [...prev, { id: `new_${Date.now()}`, setId: currentSet.id, question: '', answer: '', isNew: true, ownerId: userId, createdAt: Timestamp.now() }]);
+    };
+    
+    const handleDeleteCard = async (card: Flashcard & { isNew?: boolean }) => {
+        if (card.isNew) {
+            setEditableCards(prev => prev.filter(c => c.id !== card.id));
+        } else {
+            showAppModal({
+                text: t('confirm_delete_card'),
+                confirmAction: async () => {
+                    const setRef = db.doc(`artifacts/${appId}/users/${userId}/flashcardDecks/${currentSet.id}`);
+                    await db.doc(`artifacts/${appId}/public/data/flashcards/${card.id}`).delete();
+                    await setRef.update({ cardCount: increment(-1) });
+                    showAppModal({ text: t('card_deleted_success') });
+                },
+                cancelAction: () => {}
+            });
+        }
+    };
+
 
      return (
         <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4`}>
-            <button onClick={onBack} className="font-semibold flex items-center gap-1 hover:underline"><ArrowLeft size={16}/> {t('back_to_sets')}</button>
-            <h3 className="font-bold text-lg text-center">{t('add_flashcard')} - {currentSet.name}</h3>
-            
-            <div className="space-y-3">
-              {cardRows.map((row, index) => (
-                <div key={index} className="flex flex-col sm:flex-row gap-2 items-center bg-white p-2 rounded-lg shadow-sm">
-                    <span className="font-semibold text-gray-400 hidden sm:inline">{index + 1}</span>
-                    <textarea placeholder={`${t('question')} ${index + 1}`} value={row.question} onChange={e => handleRowInputChange(index, 'question', e.target.value)} className="w-full p-2 border rounded-md" rows={1} />
-                    <textarea placeholder={`${t('answer')} ${index + 1}`} value={row.answer} onChange={e => handleRowInputChange(index, 'answer', e.target.value)} className="w-full p-2 border rounded-md" rows={1} />
-                </div>
-              ))}
+            <div className="flex justify-between items-center">
+                <button onClick={onBack} className="font-semibold flex items-center gap-1 hover:underline"><ArrowLeft size={16}/> {t('back_to_sets')}</button>
+                <h3 className="font-bold text-lg text-center">{t('add_flashcard')} - {currentSet.name}</h3>
+                <div/>
             </div>
 
-            <div className="flex justify-between items-center gap-4">
-                <button onClick={() => setCardRows(prev => [...prev, ...Array.from({ length: 5 }, () => ({ question: '', answer: '' }))])} className="py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold transition-colors active:scale-95">{t('add_more_rows')}</button>
-                <button onClick={handleSaveCards} className={`flex items-center gap-2 py-2 px-4 rounded-lg text-white font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} transition-colors active:scale-95`}><Save className="w-5 h-5"/> {t('save_note_button')}</button>
-            </div>
+            {!currentSet.isShared && (
+                <div className="bg-white p-3 rounded-lg shadow-sm space-y-2">
+                    <h4 className="font-semibold flex items-center gap-2"><Sparkles className="text-purple-500"/> {t('ai_generate_cards_title')}</h4>
+                    <p className="text-xs text-gray-500">{t('ai_generate_cards_desc')}</p>
+                    <textarea value={aiInput} onChange={e => setAiInput(e.target.value)} rows={4} className="w-full p-2 border rounded-md" placeholder="Begrip 1: Uitleg 1&#10;Term 2 - Definition 2" />
+                    <button onClick={handleGenerateWithAI} disabled={isGenerating} className={`w-full flex justify-center items-center gap-2 text-white font-bold py-2 px-4 rounded-lg bg-purple-500 hover:bg-purple-600 active:scale-95 disabled:opacity-70`}>
+                        {isGenerating ? <><Loader2 className="animate-spin w-5 h-5"/> {t('generating')}</> : t('ai_generate_button')}
+                    </button>
+                </div>
+            )}
+            
+            {isLoading ? <div className="text-center p-4"><Loader2 className="animate-spin"/></div> : (
+                <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2">
+                    {editableCards.map((card, index) => (
+                        <div key={card.id} className="flex items-start gap-2 bg-white p-2 rounded-lg shadow-sm">
+                            <span className="font-semibold text-gray-400 pt-2">{index + 1}</span>
+                            <div className="flex-grow space-y-1">
+                                <textarea placeholder={t('question')} value={card.question} onChange={e => handleCardChange(card.id, 'question', e.target.value)} className="w-full p-2 border rounded-md" rows={2} disabled={currentSet.isShared}/>
+                                <textarea placeholder={t('answer')} value={card.answer} onChange={e => handleCardChange(card.id, 'answer', e.target.value)} className="w-full p-2 border rounded-md" rows={2} disabled={currentSet.isShared}/>
+                            </div>
+                            {!currentSet.isShared && <button onClick={() => handleDeleteCard(card)} className="p-2 text-red-500 bg-red-100 hover:bg-red-200 rounded-md mt-2"><Trash2 size={16}/></button>}
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {!currentSet.isShared && (
+                <div className="flex justify-between items-center gap-4 pt-4 border-t">
+                    <button onClick={handleAddRow} className="py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold transition-colors active:scale-95 text-sm">{t('add_more_rows')}</button>
+                    <button onClick={handleSaveCards} className={`flex items-center gap-2 py-2 px-4 rounded-lg text-white font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} transition-colors active:scale-95`}><Save className="w-5 h-5"/> {t('save_all_cards')}</button>
+                </div>
+            )}
         </div>
      );
 };
 
 
 const CramSessionView = ({ set: currentSet, onSessionComplete, ...props }: any) => {
-    const { userId, user, t, getThemeClasses, showAppModal, setView } = props;
+    const { t, getThemeClasses, showAppModal, setView } = props;
     const [cards, setCards] = useState<Flashcard[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if (user.uid === 'guest-user') { setIsLoading(false); return; }
-        const q = db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks/${currentSet.id}/cards`).orderBy('createdAt');
+        const q = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', currentSet.id);
         const unsubscribe = q.onSnapshot(snapshot => {
             setCards(shuffleArray(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Flashcard))));
             setIsLoading(false);
@@ -308,7 +479,7 @@ const CramSessionView = ({ set: currentSet, onSessionComplete, ...props }: any) 
             setIsLoading(false);
         });
         return () => unsubscribe();
-    }, [userId, currentSet.id, user.uid, showAppModal, t]);
+    }, [currentSet.id, showAppModal, t]);
 
     const handleNext = () => {
         setIsFlipped(false);
@@ -342,7 +513,7 @@ const CramSessionView = ({ set: currentSet, onSessionComplete, ...props }: any) 
 };
 
 const LearnSessionView = ({ set: currentSet, onSessionComplete, ...props}: any) => {
-    const { userId, user, t, getThemeClasses, showAppModal, setView } = props;
+    const { userId, t, getThemeClasses, showAppModal, setView } = props;
     const [dueCards, setDueCards] = useState<Flashcard[]>([]);
     const [sessionQueue, setSessionQueue] = useState<Flashcard[]>([]);
     const [stats, setStats] = useState<SessionStats>({ correct: 0, incorrect: 0, total: 0});
@@ -350,11 +521,11 @@ const LearnSessionView = ({ set: currentSet, onSessionComplete, ...props}: any) 
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if (user.uid === 'guest-user') { setIsLoading(false); return; }
-        const q = db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks/${currentSet.id}/cards`)
+        const q = db.collection(`artifacts/${appId}/public/data/flashcards`)
+            .where('setId', '==', currentSet.id)
             .where('dueDate', '<=', Timestamp.now())
             .orderBy('dueDate')
-            .limit(20); // Study in chunks of 20
+            .limit(20);
         const unsubscribe = q.onSnapshot(snapshot => {
             const fetchedCards = shuffleArray(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Flashcard)));
             setDueCards(fetchedCards);
@@ -366,9 +537,11 @@ const LearnSessionView = ({ set: currentSet, onSessionComplete, ...props}: any) 
             setIsLoading(false);
         });
         return () => unsubscribe();
-    }, [userId, currentSet.id, user.uid, showAppModal, t]);
+    }, [currentSet.id, showAppModal, t]);
 
     const updateCardSrs = async (card: Flashcard, knewIt: boolean) => {
+        if (currentSet.isShared) return;
+
         const easeFactor = card.easeFactor || 2.5;
         let newInterval;
         let newEaseFactor = easeFactor;
@@ -378,14 +551,14 @@ const LearnSessionView = ({ set: currentSet, onSessionComplete, ...props}: any) 
             else if (card.interval === 1) newInterval = 6;
             else newInterval = Math.ceil(card.interval * easeFactor);
         } else {
-            newInterval = 1; // Show again tomorrow
-            newEaseFactor = Math.max(1.3, easeFactor - 0.2); // Make it a bit harder
+            newInterval = 1;
+            newEaseFactor = Math.max(1.3, easeFactor - 0.2);
         }
         
         const newDueDate = new Date();
         newDueDate.setDate(newDueDate.getDate() + newInterval);
         
-        const cardRef = db.doc(`artifacts/${appId}/users/${userId}/flashcardDecks/${currentSet.id}/cards/${card.id}`);
+        const cardRef = db.doc(`artifacts/${appId}/public/data/flashcards/${card.id}`);
         await cardRef.update({
             interval: newInterval,
             easeFactor: newEaseFactor,
@@ -413,8 +586,7 @@ const LearnSessionView = ({ set: currentSet, onSessionComplete, ...props}: any) 
 
     useEffect(() => {
         if (!isLoading && sessionQueue.length === 0 && dueCards.length > 0) {
-            // Check if there are any more due cards in the DB before finishing
-            const q = db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks/${currentSet.id}/cards`).where('dueDate', '<=', Timestamp.now()).limit(1);
+            const q = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', currentSet.id).where('dueDate', '<=', Timestamp.now()).limit(1);
             q.get().then(snapshot => {
                 if (snapshot.empty) {
                      setView('all-learned');
@@ -423,7 +595,7 @@ const LearnSessionView = ({ set: currentSet, onSessionComplete, ...props}: any) 
                 }
             });
         }
-    }, [isLoading, sessionQueue.length, dueCards.length, onSessionComplete, stats, setView, userId, currentSet.id]);
+    }, [isLoading, sessionQueue.length, dueCards.length, onSessionComplete, stats, setView, currentSet.id]);
 
     if (isLoading) return <div className="text-center p-8 flex justify-center items-center gap-2"><Loader2 className="animate-spin" /> Loading cards...</div>;
     if (dueCards.length === 0) return <AllCardsLearnedView {...props} set={currentSet} setView={setView} />
@@ -449,7 +621,7 @@ const LearnSessionView = ({ set: currentSet, onSessionComplete, ...props}: any) 
 }
 
 const MultipleChoiceSessionView = ({ set: currentSet, onSessionComplete, ...props }: any) => {
-    const { userId, user, t, getThemeClasses, showAppModal, setView } = props;
+    const { t, getThemeClasses, showAppModal, setView } = props;
     const [allCards, setAllCards] = useState<Flashcard[]>([]);
     const [sessionQueue, setSessionQueue] = useState<Flashcard[]>([]);
     const [choices, setChoices] = useState<string[]>([]);
@@ -459,8 +631,7 @@ const MultipleChoiceSessionView = ({ set: currentSet, onSessionComplete, ...prop
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if (user.uid === 'guest-user') { setIsLoading(false); return; }
-        const q = db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks/${currentSet.id}/cards`);
+        const q = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', currentSet.id);
         const unsubscribe = q.onSnapshot(snapshot => {
             const fetchedCards = snapshot.docs.map(d => ({id: d.id, ...d.data()} as Flashcard));
             if (fetchedCards.length < 2) {
@@ -478,14 +649,14 @@ const MultipleChoiceSessionView = ({ set: currentSet, onSessionComplete, ...prop
             setIsLoading(false);
         });
         return () => unsubscribe();
-    }, [userId, currentSet.id, user.uid, showAppModal, t, setView]);
+    }, [currentSet.id, showAppModal, t, setView]);
     
     const card = useMemo(() => sessionQueue[0], [sessionQueue]);
 
     useEffect(() => {
         if(card && allCards.length > 1) {
             const distractors = shuffleArray(allCards.filter(c => c.id !== card.id))
-                .slice(0, 3) // Cap at 3 distractors for a total of 4 choices
+                .slice(0, 3)
                 .map(c => c.answer);
             setChoices(shuffleArray([card.answer, ...distractors]));
         }
@@ -544,7 +715,6 @@ const MultipleChoiceSessionView = ({ set: currentSet, onSessionComplete, ...prop
 };
 
 // --- Reusable UI Components for Study Sessions ---
-
 const StudyCardLayout = ({ children, card, isFlipped, setIsFlipped, progressPercentage, set: currentSet, setView, t, getThemeClasses, cardsRemainingText }: any) => {
 
     useEffect(() => {
@@ -589,9 +759,9 @@ const NoCardsFoundView = ({setView, t, getThemeClasses }: any) => (
     <div className={`p-6 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4 text-center`}>
         <BookOpen className={`w-16 h-16 mx-auto ${getThemeClasses('text')}`} />
         <h3 className="font-bold text-lg">{t('no_flashcards_found')}</h3>
-        <p className="text-gray-600">Add some cards in the 'Manage Cards' section to start studying.</p>
+        <p className="text-gray-600">Add some cards in the 'Manage' section to start studying.</p>
         <div className="flex justify-center gap-4 mt-4">
-             <button onClick={() => setView('sets')} className="font-semibold flex items-center gap-1 hover:underline"><ArrowLeft size={16}/> {t('back_to_sets')}</button>
+             <button onClick={() => setView('set-list')} className="font-semibold flex items-center gap-1 hover:underline"><ArrowLeft size={16}/> {t('back_to_sets')}</button>
              <button onClick={() => setView('manage')} className={`flex items-center gap-2 font-semibold text-sm py-2 px-3 rounded-lg transition-colors active:scale-95 text-white ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}><Settings size={16}/> {t('manage_cards')}</button>
         </div>
     </div>
@@ -602,7 +772,7 @@ const AllCardsLearnedView = ({ set: currentSet, setView, ...props }: any) => {
 
     const handleResetProgressAndRestart = async () => {
         const batch = db.batch();
-        const cardsRef = db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks/${currentSet.id}/cards`);
+        const cardsRef = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', currentSet.id);
         const snapshot = await cardsRef.get();
         snapshot.forEach(cardDoc => {
             batch.update(cardDoc.ref, {
@@ -612,7 +782,7 @@ const AllCardsLearnedView = ({ set: currentSet, setView, ...props }: any) => {
             });
         });
         await batch.commit();
-        setView('learn'); // Restart the learn session
+        setView('learn');
     };
 
     return (
@@ -624,9 +794,11 @@ const AllCardsLearnedView = ({ set: currentSet, setView, ...props }: any) => {
                  <button onClick={() => setView('mode-selection')} className={`w-full sm:w-auto font-bold py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 transition-colors active:scale-95 flex items-center justify-center gap-2`}>
                     <Layers size={16}/> {t('choose_other_method_button')}
                 </button>
-                 <button onClick={handleResetProgressAndRestart} className={`w-full sm:w-auto font-bold py-2 px-4 rounded-lg text-white ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} transition-colors active:scale-95 flex items-center justify-center gap-2`}>
-                    <RotateCcw size={16}/> {t('reset_and_start_over_button')}
-                </button>
+                 {!currentSet.isShared && (
+                    <button onClick={handleResetProgressAndRestart} className={`w-full sm:w-auto font-bold py-2 px-4 rounded-lg text-white ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} transition-colors active:scale-95 flex items-center justify-center gap-2`}>
+                        <RotateCcw size={16}/> {t('reset_and_start_over_button')}
+                    </button>
+                 )}
             </div>
         </div>
     );

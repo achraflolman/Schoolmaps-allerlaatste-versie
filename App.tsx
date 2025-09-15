@@ -702,6 +702,46 @@ const App: React.FC = () => {
             if (hasNewReplies) await batch.commit();
         });
 
+        // Listen for new shared sets to create notifications
+        const sharedSetsQuery = db.collection(`artifacts/${appId}/public/data/sharedSets`).where('recipientEmail', '==', user.email);
+        const unsubscribeSharedSets = sharedSetsQuery.onSnapshot(async (snapshot) => {
+            if (snapshot.empty || !user?.uid) return;
+
+            const userNotifsRef = db.collection(`artifacts/${appId}/users/${user.uid}/notifications`);
+            const existingShareNotifsQuery = userNotifsRef.where('flashcardSetId', '!=', null);
+            const existingNotifsSnapshot = await existingShareNotifsQuery.get();
+            const existingSetIds = new Set(existingNotifsSnapshot.docs.map(doc => doc.data().flashcardSetId));
+
+            const batch = db.batch();
+            let hasNewShares = false;
+
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added') {
+                    const shareData = change.doc.data();
+                    const setId = shareData.setId;
+
+                    if (!existingSetIds.has(setId)) {
+                        const newNotifRef = userNotifsRef.doc();
+                        batch.set(newNotifRef, {
+                            title: t('notification_flashcard_share_title'),
+                            text: t('notification_flashcard_share_text', { name: shareData.sharerName, setName: shareData.setName, subject: tSubject(shareData.subject) }),
+                            type: 'flashcard_share',
+                            read: false,
+                            createdAt: shareData.createdAt,
+                            flashcardSetId: setId,
+                            subject: shareData.subject,
+                        });
+                        hasNewShares = true;
+                    }
+                }
+            });
+
+            if (hasNewShares) {
+                await batch.commit();
+            }
+        });
+
+
         // Fetch all data for progress view & home dashboard
         const allFilesQuery = db.collection(`artifacts/${appId}/public/data/files`).where('ownerId', '==', user.uid);
         const unsubscribeAllFiles = allFilesQuery.onSnapshot((snapshot) => {
@@ -735,6 +775,7 @@ const App: React.FC = () => {
             unsubscribeNotifs();
             unsubscribeBroadcasts();
             unsubscribeFeedback();
+            unsubscribeSharedSets();
             unsubscribeAllFiles();
             unsubscribeAllNotes();
             unsubscribeAllSets();
@@ -743,7 +784,7 @@ const App: React.FC = () => {
             unsubscribeAllSessions();
         };
 
-    }, [user, isAdmin, t]);
+    }, [user, isAdmin, t, tSubject]);
     
     useEffect(() => {
         if (!user?.uid || !currentSubject || user.uid === 'guest-user') {
