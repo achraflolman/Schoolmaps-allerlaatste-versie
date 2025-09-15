@@ -1,5 +1,6 @@
 // FIX: The error messages indicate that Firebase v9 is likely installed, but the code uses the v8 API.
 // Using the v9 compatibility libraries ('/compat') allows the v8-style code to work with the v9 SDK.
+// FIX: Changed imports to use Firebase v9 compatibility libraries to resolve errors related to missing properties on the 'firebase' object.
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
