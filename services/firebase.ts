@@ -1,6 +1,5 @@
-// FIX: Updated Firebase imports to use the v9 compatibility layer ('/compat').
-// This is necessary when using Firebase v9+ with the older v8 syntax (e.g., firebase.auth()).
-// This change resolves the 'property does not exist' errors on the 'firebase' object.
+// FIX: The error messages indicate that Firebase v9 is likely installed, but the code uses the v8 API.
+// Using the v9 compatibility libraries ('/compat') allows the v8-style code to work with the v9 SDK.
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
