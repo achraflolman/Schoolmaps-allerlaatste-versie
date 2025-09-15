@@ -1,5 +1,7 @@
 
 
+
+// FIX: Use firebase/compat imports for Firebase v9+ with v8 syntax to resolve property not found errors.
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
