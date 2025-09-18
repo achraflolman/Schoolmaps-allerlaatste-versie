@@ -1,11 +1,9 @@
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 
 import { auth, db, appId, storage, EmailAuthProvider, Timestamp, arrayUnion, increment } from './services/firebase';
 import { translations, subjectDisplayTranslations, defaultHomeLayout } from './constants';
-import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan, StudySession } from './types';
+import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan, StudySession, SyncedCalendar } from './types';
 
 import CustomModal from './components/ui/Modal';
 import BroadcastModal from './components/new/BroadcastModal';
@@ -139,7 +137,7 @@ const MainAppLayout: React.FC<{
     subjectFiles: FileData[];
     searchQuery: string;
     setSearchQuery: (query: string) => void;
-    userEvents: CalendarEvent[];
+    allEvents: CalendarEvent[];
     userStudyPlans: StudyPlan[];
     recentFiles: FileData[];
     allUserFiles: FileData[];
@@ -180,7 +178,7 @@ const MainAppLayout: React.FC<{
 }> = ({
     user, t, tSubject, getThemeClasses, showAppModal, copyTextToClipboard, setIsAvatarModalOpen,
     handleLogout, currentView, setCurrentView, currentSubject, setCurrentSubject, handleGoHome,
-    subjectFiles, searchQuery, setSearchQuery, userEvents, userStudyPlans, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions,
+    subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions,
     language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, closeAppModal, notifications, unreadCount, showBroadcast,
     focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, addCalendarEvent, removeCalendarEvent
 }) => {
@@ -205,18 +203,18 @@ const MainAppLayout: React.FC<{
         };
     }, [isSidebarOpen]);
 
-    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents, allUserFiles, allUserNotes, allUserFlashcardSets };
+    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents: allEvents, allUserFiles, allUserNotes, allUserFlashcardSets };
 
     const mainContent = (
         <div>
-            {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, tSubject, userEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView }} />}
+            {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, tSubject, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView }} />}
             {currentView === 'home' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
             
             {currentView === 'files' && !currentSubject && <SubjectSelectionView {...{ user, t, tSubject, getThemeClasses, setCurrentSubject }} />}
             {currentView === 'files' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
 
-            {currentView === 'calendar' && <CalendarView {...{ userEvents, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user }} />}
-            {currentView === 'planner' && <StudyPlannerView {...{ userStudyPlans, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user }} />}
+            {currentView === 'calendar' && <CalendarView {...{ allEvents, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user, onProfileUpdate }} />}
+            {currentView === 'planner' && <StudyPlannerView {...{ allEvents, userStudyPlans, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user }} />}
             {currentView === 'tools' && <ToolsView {...toolsViewProps} />}
             {currentView === 'settings' && <SettingsView {...{ user, t, getThemeClasses, language, setLanguage, themeColor, setThemeColor, showAppModal, tSubject, setCurrentView, onProfileUpdate, fontFamily, setFontFamily, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, setIsAvatarModalOpen }} />}
             {currentView === 'notifications' && <NotificationsView {...{ user, t, getThemeClasses, notifications, setCurrentView, onProfileUpdate, showBroadcast, showAppModal }} />}
@@ -285,7 +283,7 @@ const MainAppLayout: React.FC<{
                     addCalendarEvent={addCalendarEvent}
                     removeCalendarEvent={removeCalendarEvent}
                     tSubject={tSubject}
-                    userEvents={userEvents}
+                    userEvents={allEvents}
                     onProfileUpdate={onProfileUpdate}
                 />
             )}
@@ -399,6 +397,7 @@ const App: React.FC = () => {
     const [allSubjectFiles, setAllSubjectFiles] = useState<FileData[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [userEvents, setUserEvents] = useState<CalendarEvent[]>([]);
+    const [syncedEvents, setSyncedEvents] = useState<CalendarEvent[]>([]);
     const [userStudyPlans, setUserStudyPlans] = useState<StudyPlan[]>([]);
     const [recentFiles, setRecentFiles] = useState<FileData[]>([]);
     const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -424,6 +423,7 @@ const App: React.FC = () => {
     const [isAppReadyForDisplay, setIsAppReadyForDisplay] = useState(false);
     const [isMinLoadingTimePassed, setIsMinLoadingTimePassed] = useState(false);
 
+    const allEvents = useMemo(() => [...userEvents, ...syncedEvents], [userEvents, syncedEvents]);
 
     // Memoized theme and translation functions
     const themeStyles: { [color: string]: { [variant: string]: string } } = {
@@ -595,6 +595,144 @@ const App: React.FC = () => {
         setCurrentSubject(null);
     }, []);
 
+    // --- iCal Parsing Logic ---
+    const parseIcsDate = (dateString: string): Date | null => {
+        const match = dateString.match(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?/);
+        if (match) {
+            const [, year, month, day, hour, minute, second] = match;
+            return new Date(Date.UTC(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hour, 10), parseInt(minute, 10), parseInt(second, 10)));
+        }
+        const dateOnlyMatch = dateString.match(/(\d{4})(\d{2})(\d{2})/);
+        if (dateOnlyMatch) {
+            const [, year, month, day] = dateOnlyMatch;
+            return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+        }
+        return null;
+    };
+      
+    const parseIcs = useCallback((icsData: string, calendarInfo: SyncedCalendar, localUser: AppUser): CalendarEvent[] => {
+        const events: CalendarEvent[] = [];
+        const eventBlocks = icsData.split('BEGIN:VEVENT').slice(1);
+  
+        const keywordMap: { [key: string]: CalendarEvent['type'] } = {
+          'huiswerk': 'homework', 'homework': 'homework', 'opdracht': 'homework', 'assignment': 'homework',
+          'toets': 'test', 'test': 'test', 'examen': 'test', 'exam': 'test', 'proefwerk': 'test',
+          'presentatie': 'presentation', 'presentation': 'presentation',
+          'mondeling': 'oral', 'oral': 'oral',
+          'werk': 'work', 'work': 'work',
+          'school': 'school', 'les': 'school', 'college': 'school'
+        };
+  
+        const userSubjects = Array.from(new Set([...(localUser.selectedSubjects || []), ...(localUser.customSubjects || [])]));
+  
+        for (const block of eventBlocks) {
+            const lines = block.split(/\r\n|\n|\r/);
+            const eventData: any = {};
+            lines.forEach(line => {
+                const [key, ...valueParts] = line.split(':');
+                const value = valueParts.join(':');
+                if (key.startsWith('SUMMARY')) eventData.summary = value;
+                if (key.startsWith('DTSTART')) eventData.dtstart = value;
+                if (key.startsWith('DTEND')) eventData.dtend = value;
+                if (key.startsWith('DESCRIPTION')) eventData.description = value.replace(/\\n/g, '\n');
+                if (key.startsWith('RRULE')) eventData.rrule = value;
+            });
+  
+            const start = parseIcsDate(eventData.dtstart);
+            let end = parseIcsDate(eventData.dtend);
+            if (!start) continue;
+            if (!end) {
+                end = new Date(start.getTime() + 60 * 60 * 1000); // Default to 1 hour
+            }
+  
+            const titleLower = (eventData.summary || '').toLowerCase();
+          
+            let eventType: CalendarEvent['type'] = 'other';
+            for (const keyword in keywordMap) {
+                if (titleLower.includes(keyword)) {
+                    eventType = keywordMap[keyword];
+                    break;
+                }
+            }
+            
+            let matchedSubject = 'algemeen';
+            for (const sub of userSubjects) {
+                if (titleLower.includes(sub.toLowerCase()) || titleLower.includes(tSubject(sub).toLowerCase())) {
+                    matchedSubject = sub;
+                    break;
+                }
+            }
+  
+            const baseEvent: Omit<CalendarEvent, 'id' | 'createdAt'> = {
+                title: eventData.summary || 'No Title',
+                description: eventData.description || '',
+                start: Timestamp.fromDate(start),
+                end: Timestamp.fromDate(end),
+                subject: matchedSubject,
+                type: eventType,
+                ownerId: localUser.uid,
+                isSynced: true,
+                sourceCalendar: { name: calendarInfo.name, provider: calendarInfo.provider }
+            };
+  
+            events.push({ ...baseEvent, id: `synced-${start.getTime()}-${Math.random()}`, createdAt: Timestamp.now() });
+  
+            if (eventData.rrule && eventData.rrule.includes('FREQ=WEEKLY')) {
+                let untilDate: Date | null = null;
+                const untilMatch = eventData.rrule.match(/UNTIL=([0-9T-Z]+)/);
+                if (untilMatch) untilDate = parseIcsDate(untilMatch[1]);
+                
+                let currentStart = new Date(start);
+                const duration = end.getTime() - start.getTime();
+                
+                const maxRecurrence = 52;
+                for (let i = 0; i < maxRecurrence; i++) {
+                    currentStart.setDate(currentStart.getDate() + 7);
+                    if (untilDate && currentStart > untilDate) break;
+  
+                    const newStart = new Date(currentStart);
+                    const newEnd = new Date(newStart.getTime() + duration);
+                    
+                     events.push({ 
+                         ...baseEvent,
+                         id: `synced-${newStart.getTime()}-${Math.random()}`, 
+                         start: Timestamp.fromDate(newStart),
+                         end: Timestamp.fromDate(newEnd),
+                         createdAt: Timestamp.now()
+                     });
+                }
+            }
+        }
+        return events;
+    }, [tSubject]);
+  
+    const fetchAndParseCalendars = useCallback(async (localUser: AppUser) => {
+        if (!localUser || localUser.uid === 'guest-user') return;
+
+        const calendarsToSync = localUser.syncedCalendars?.filter(c => c.enabled);
+        if (!calendarsToSync || calendarsToSync.length === 0) {
+            setSyncedEvents([]);
+            return;
+        }
+  
+        let allParsedEvents: CalendarEvent[] = [];
+        
+        for (const cal of calendarsToSync) {
+            try {
+                const targetUrl = cal.url.replace(/^webcal:\/\//i, 'https://');
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error(`Failed to fetch calendar: ${response.statusText}`);
+                const icsData = await response.text();
+                const parsed = parseIcs(icsData, cal, localUser);
+                allParsedEvents = [...allParsedEvents, ...parsed];
+            } catch (error) {
+                console.error(`Error syncing calendar "${cal.name}":`, error);
+            }
+        }
+        setSyncedEvents(allParsedEvents);
+    }, [parseIcs]);
+
     // Data fetching effects, now at top level
     useEffect(() => {
         if (!user?.uid || user.uid === 'guest-user' || isAdmin) {
@@ -607,8 +745,12 @@ const App: React.FC = () => {
             setUserStudyPlans([]);
             setAllUserTasks([]);
             setAllStudySessions([]);
+            setSyncedEvents([]);
             return;
         }
+        
+        fetchAndParseCalendars(user);
+        const calendarSyncInterval = setInterval(() => fetchAndParseCalendars(user), 60000);
 
         const eventsQuery = db.collection(`artifacts/${appId}/users/${user.uid}/calendarEvents`).orderBy('start', 'asc');
         const unsubscribeEvents = eventsQuery.onSnapshot((snapshot) => {
@@ -782,9 +924,10 @@ const App: React.FC = () => {
             unsubscribePlans();
             unsubscribeAllTasks();
             unsubscribeAllSessions();
+            clearInterval(calendarSyncInterval);
         };
 
-    }, [user, isAdmin, t, tSubject]);
+    }, [user, isAdmin, t, tSubject, fetchAndParseCalendars]);
     
     useEffect(() => {
         if (!user?.uid || !currentSubject || user.uid === 'guest-user') {
@@ -1200,6 +1343,8 @@ const App: React.FC = () => {
                             aiBotName: 'AI Assistent',
                             aiBotAvatarUrl: null,
                             hasCompletedOnboarding: false,
+                            goals: [],
+                            syncedCalendars: [],
                         };
                         await userDocRef.set(finalUser, { merge: true });
                         setUser(finalUser);
@@ -1284,7 +1429,7 @@ const App: React.FC = () => {
 
     const authContainerClasses = (appStatus === 'unauthenticated' || appStatus === 'initializing' || appStatus === 'awaiting-verification' || (showIntro && !user) ) ? getAuthThemeClasses('bg') : '';
 
-    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, userEvents, userStudyPlans, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions, addCalendarEvent: addCalendarEventFromAI, removeCalendarEvent: removeCalendarEventFromAI };
+    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions, addCalendarEvent: addCalendarEventFromAI, removeCalendarEvent: removeCalendarEventFromAI };
     
     const isLoading = !isAppReadyForDisplay || !isMinLoadingTimePassed;
 

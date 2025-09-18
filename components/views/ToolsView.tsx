@@ -1,11 +1,9 @@
-
-
 import React, { useState } from 'react';
 import { BookOpen, Timer, ListTodo, BarChart3, FileText } from 'lucide-react';
 import FlashcardsView from './tools/FlashcardsView';
 import StudyTimerView from './tools/StudyTimerView';
 import ToDoListView from './tools/ToDoListView';
-import ProgressView from '../views/ProgressView';
+import ProgressView from './ProgressView';
 import NotesView from './tools/NotesView';
 
 import type { AppUser, ModalContent, ToDoTask, CalendarEvent, FileData, Note, FlashcardSet } from '../../types';
@@ -51,7 +49,7 @@ const ToolsView: React.FC<ToolsViewProps> = (props) => {
   };
   
   const toolNavItems = [
-      { id: 'timer', label: props.t('study_timer'), icon: <Timer/> },
+      { id: 'timer', label: props.t('pomodoros'), icon: <Timer/> },
       { id: 'todo', label: props.t('todo_list'), icon: <ListTodo/> },
       { id: 'flashcards', label: props.t('flashcards'), icon: <BookOpen/> },
       { id: 'notes', label: props.t('notes'), icon: <FileText/> },

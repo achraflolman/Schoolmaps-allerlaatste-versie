@@ -13,7 +13,7 @@ export const allSubjects: string[] = [
 ];
 
 export const educationLevels: string[] = [
-  "basisschool", "mavo", "havo", "vwo", "mbo", "hbo", "wo", "anders"
+  "basisschool", "middelbare_school", "hogeschool_universiteit", "anders"
 ];
 
 export const availableThemeColors: string[] = ['emerald', 'blue', 'rose', 'purple', 'pink', 'indigo', 'teal', 'amber'];
@@ -35,8 +35,10 @@ export const subjectDisplayTranslations: { [lang: string]: { [key: string]: stri
     "latijn": "Latijn", "informatica": "Informatica", "kunst": "Kunst", "muziek": "Muziek",
     "lichamelijke_opvoeding": "Lichamelijke Opvoeding", "ckv": "CKV", "algemeen": "Algemeen",
     // Education levels
-    "basisschool": "Basisschool", "mavo": "MAVO", "havo": "HAVO", "vwo": "VWO",
-    "mbo": "MBO", "hbo": "HBO", "wo": "WO", "anders": "Anders"
+    "basisschool": "Basisschool", 
+    "middelbare_school": "Middelbare School",
+    "hogeschool_universiteit": "Hogeschool / Universiteit",
+    "anders": "Anders"
   },
   en: {
     // Subjects
@@ -46,8 +48,10 @@ export const subjectDisplayTranslations: { [lang: string]: { [key: string]: stri
     "latijn": "Latin", "informatica": "Informatics", "kunst": "Art", "muziek": "Music",
     "lichamelijke_opvoeding": "Physical Education", "ckv": "Cultural and Artistic Education", "algemeen": "General",
     // Education levels
-    "basisschool": "Primary School", "mavo": "VMBO", "havo": "HAVO", "vwo": "VWO",
-    "mbo": "MBO", "hbo": "HBO", "wo": "University", "anders": "Other"
+    "basisschool": "Primary School",
+    "middelbare_school": "High School",
+    "hogeschool_universiteit": "College / University",
+    "anders": "Other"
   }
 };
 
@@ -241,7 +245,7 @@ export const translations: { [lang: string]: { [key: string]: string } } = {
         'faq': 'Veelgestelde vragen',
         'version': 'Versie',
         'copyright': 'Alle rechten voorbehouden.',
-        'study_timer': 'Studeertimer',
+        'pomodoros': "Pomodoro's",
         'todo_list': 'Takenlijst',
         'flashcards': 'Flashcards',
         'select_a_subject_first': 'Selecteer eerst een vak',
@@ -493,7 +497,7 @@ export const translations: { [lang: string]: { [key: string]: string } } = {
         'ai_chat': 'AI Chat',
         'ai_chat_placeholder': 'Vraag iets of geef een opdracht...',
         'ai_chat_welcome': 'Hoi! Hoe kan ik je vandaag helpen met je studie?',
-        'ai_system_instruction': "Jij bent een extreem intelligente en proactieve studie-assistent genaamd {botName}. Jouw doel is om de agenda van de gebruiker, {userName}, zo efficiënt mogelijk te beheren.\n**BELANGRIJKE REGELS:**\n1.  **Begroeting:** Begin elk nieuw gesprek ALTIJD met een korte, vrolijke en gevarieerde begroeting.\n2.  **Proactief Plannen:** Lees de input van de gebruiker zorgvuldig. Identificeer direct afspraken, taken en hun tijden. Gebruik de `addCalendarEvent` functie om ze automatisch in de agenda te zetten.\n3.  **Sleutelwoordherkenning:**\n    *   **Werk:** Als je \"werk\" ziet (bijv. \"ik heb van 8 tot 10 werk\"), maak een afspraak aan met `title: 'Werk'`, `type: 'work'`, en de juiste tijden. Het `subject` moet 'algemeen' zijn.\n    *   **School:** Als je \"school\" ziet (bijv. \"school van 9 tot 3\"), maak een afspraak aan met `title: 'School'`, `type: 'school'`, en de juiste tijden. `subject` is 'algemeen'.\n    *   **Huiswerk/Opdrachten:** Als je een vaknaam gevolgd door \"huiswerk\" of \"opdracht\" ziet (bijv. \"Logic and sets huiswerk\"), zet dit in de agenda. `title` is 'Huiswerk: Logic and sets', `type` is 'homework', `subject` is 'algemeen' of het bijbehorende vak als je het herkent.\n4.  **Slimme Tijdsplanning:**\n    *   **CONFLICTEN VERMIJDEN:** Plan taken zoals huiswerk of studietijd NOOIT tijdens 'School' of 'Werk' uren. Gebruik de `getCalendarEvents` functie om de planning van een dag te controleren VOORDAT je een nieuwe afspraak toevoegt.\n    *   **Logische Tijd:** Plan huiswerk standaard in de middag na schooltijd (bijv. 16:00), tenzij de gebruiker een specifieke tijd geeft.\n5.  **Datum & Tijd Conversie:** Converteer altijd datums in natuurlijke taal ('morgen', 'volgende week vrijdag') naar het strikte 'YYYY-MM-DD' formaat.\n6.  **Vakken & Afkortingen:** Herken de volgende vakken en hun afkortingen: nederlands (ne), engels (en), wiskunde (wi), natuurkunde (na), scheikunde (sk), biologie (bi), geschiedenis (gs), aardrijkskunde (ak).\n7.  **Algemene Vragen:** Als een vraag niet over planning gaat, beantwoord deze dan met je algemene kennis. Blijf kort en bondig.",
+        'ai_system_instruction': "Jij bent een extreem intelligente en proactieve studie-assistent genaamd {botName}. Jouw doel is om de agenda van de gebruiker, {userName}, zo efficiënt mogelijk te beheren.\n**BELANGRIJKE REGELS:**\n1.  **Begroeting:** Begin elk nieuw gesprek ALTIJD met een korte, vrolijke en gevarieerde begroeting.\n2.  **Proactief Plannen:** Lees de input van de gebruiker zorgvuldig. Identificeer direct afspraken, taken en hun tijden. Gebruik de `addCalendarEvent` functie om ze automatisch in de agenda te zetten.\n3.  **Sleutelwoordherkenning:**\n    *   **Werk:** Als je \"werk\" ziet, maak een afspraak aan met `title: 'Werk'`, `type: 'work'`, `subject: 'algemeen'`.\n    *   **School:** Als je \"school\" ziet, maak een afspraak aan met `title: 'School'`, `type: 'school'`, `subject: 'algemeen'`.\n    *   **Huiswerk/Opdrachten:** Herken vaknamen gevolgd door \"huiswerk\" of \"opdracht\". Maak een afspraak met `type: 'homework'`.\n4.  **Slimme Tijdsplanning & Analyse:**\n    *   **CONFLICTEN VERMIJDEN:** Plan taken zoals huiswerk of studietijd NOOIT tijdens 'School' of 'Werk' uren. Gebruik de `getCalendarEvents` functie om de planning van een dag te controleren VOORDAT je een nieuwe afspraak toevoegt.\n    *   **TUSSENUREN ZOEKEN:** Wanneer de gebruiker vraagt 'wat staat er op de planning?', gebruik `getCalendarEvents`, analyseer de resultaten op gaten in het rooster en rapporteer deze expliciet. Bijvoorbeeld: 'Van 10:00 tot 11:00 heb je een **Tussenuur**.'\n5.  **Datum & Tijd Conversie:** Converteer altijd datums in natuurlijke taal ('morgen', 'volgende week vrijdag') naar het strikte 'YYYY-MM-DD' formaat.\n6.  **Vakken & Afkortingen:** Herken de volgende vakken en hun afkortingen: nederlands (ne), engels (en), wiskunde (wi), natuurkunde (na), scheikunde (sk), biologie (bi), geschiedenis (gs), aardrijkskunde (ak).\n7.  **Algemene Vragen:** Als een vraag niet over planning gaat, beantwoord deze dan met je algemene kennis. Blijf kort en bondig.",
         'download_agenda': 'Agenda Downloaden',
         'download_weeks_label': 'Downloaden voor de komende',
         'download_format_label': 'Selecteer formaat',
@@ -525,6 +529,30 @@ export const translations: { [lang: string]: { [key: string]: string } } = {
         'error_share_failed': 'Kon de set niet delen.',
         'notification_flashcard_share_title': 'Nieuwe flashcard set!',
         'notification_flashcard_share_text': '{name} heeft de set "{setName}" voor het vak {subject} met je gedeeld.',
+        'registration_goal_title': 'Wat wil je bereiken?',
+        'registration_almost_there': 'Je bent er bijna - nog 1 laatste stap!',
+        'goal_higher_grades': 'Hogere cijfers',
+        'goal_be_organized': 'Beter georganiseerd zijn',
+        'goal_better_planning': 'Een betere planning',
+        'goal_less_stress': 'Minder stress',
+        'settings_sync_calendar': 'Agenda Syncen',
+        'sync_calendar_title': 'Synchroniseer een externe agenda',
+        'sync_calendar_desc': 'Voeg een iCal-link toe om afspraken van andere agenda\'s (zoals Google, Apple of je schoolrooster) in Schoolmaps te zien.',
+        'add_new_calendar': 'Nieuwe agenda toevoegen',
+        'get_ical_link': '1. Haal je iCal-link',
+        'paste_ical_link': '2. Plak je agenda sync-link',
+        'calendar_name': 'Naam van agenda',
+        'calendar_url': 'iCal URL',
+        'select_provider': 'Selecteer je provider',
+        'how_to_get_link': 'Hoe kom ik aan mijn iCal-link?',
+        'sync_calendar_tutorial_google': 'https://support.google.com/calendar/answer/37648?hl=nl',
+        'sync_calendar_tutorial_apple': 'https://support.apple.com/nl-nl/guide/calendar/icl1022/mac',
+        'sync_calendar_tutorial_teams': 'https://support.microsoft.com/nl-nl/office/een-kanaalagenda-bekijken-in-microsoft-teams-9c869b4c-623b-472d-9005-7c084a44d7c0',
+        'sync_calendar_tutorial_canvas': 'https://community.canvaslms.com/t5/Student-Guide/How-do-I-subscribe-to-the-Calendar-feed-using-an-iCal-link-as/ta-p/522',
+        'sync_calendar_tutorial_magister': 'https://www.osg-willemblaeu.nl/magister/magister-agenda-koppelen-aan-andere-agenda/',
+        'synced_calendars': 'Gesynchroniseerde Agenda\'s',
+        'no_synced_calendars': 'Je hebt nog geen agenda\'s gesynchroniseerd.',
+        'save_calendar': 'Agenda opslaan'
     },
     en: {
       'error_reauth_failed': 'Re-authentication failed. Please check your password.',
@@ -715,7 +743,7 @@ export const translations: { [lang: string]: { [key: string]: string } } = {
       'faq': 'FAQ',
       'version': 'Version',
       'copyright': 'All rights reserved.',
-      'study_timer': 'Study Timer',
+      'pomodoros': 'Pomodoro\'s',
       'todo_list': 'To-Do List',
       'flashcards': 'Flashcards',
       'select_a_subject_first': 'Select a subject first',

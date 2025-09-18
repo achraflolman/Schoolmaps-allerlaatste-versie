@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Target, GraduationCap, BarChart, BookOpen, Smile, Check } from 'lucide-react';
 import { db, appId, auth, Timestamp } from '../../services/firebase';
 import { allSubjects, educationLevels } from '../../constants';
 import type { ModalContent } from '../../types';
@@ -40,6 +40,7 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
       regEducationLevel: '',
       regLanguage: 'nl',
   });
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [selectedRegSubjects, setSelectedRegSubjects] = useState<string[]>([]);
   const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,13 +76,13 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
                 return false;
             }
         }
-        if (step === 2) {
+        if (step === 3) { // Was 2
              if (!formData.regSchoolName || !formData.regClassName || !formData.regEducationLevel) {
                  showAppModal({ text: t('error_fill_current_step') });
                  return false;
             }
         }
-        if (step === 3) {
+        if (step === 4) { // was 3
             if (selectedRegSubjects.length === 0) {
                 showAppModal({ text: t('error_select_subjects_register') });
                 return false;
@@ -159,6 +160,7 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
                 aiBotName: 'AI Assistent',
                 aiBotAvatarUrl: null,
                 hasCompletedOnboarding: false,
+                goals: selectedGoals,
             });
 
             // Sign out immediately to prevent the app from auto-logging in the unverified user.
@@ -217,9 +219,22 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
     );
   };
   
+  const handleGoalToggle = (goal: string) => {
+    setSelectedGoals(prev => 
+        prev.includes(goal) ? prev.filter(g => g !== goal) : [...prev, goal]
+    );
+  }
+  
+  const goals = [
+    { id: 'grades', text: t('goal_higher_grades'), icon: <BarChart/> },
+    { id: 'organized', text: t('goal_be_organized'), icon: <BookOpen/> },
+    { id: 'planning', text: t('goal_better_planning'), icon: <GraduationCap/> },
+    { id: 'stress', text: t('goal_less_stress'), icon: <Smile/> },
+  ];
+
   const renderRegisterForm = () => (
     <form onSubmit={handleAuthAction} className="space-y-5">
-        <StepIndicator count={4} current={step} getThemeClasses={getThemeClasses} />
+        <StepIndicator count={5} current={step} getThemeClasses={getThemeClasses} />
         {step === 1 && (
             <div className="space-y-5 animate-fade-in">
                 <FormInput name="regName" label={t('your_name')} type="text" value={formData.regName} onChange={handleInputChange} placeholder={t('placeholder_name')} disabled={isSubmitting} getThemeClasses={getThemeClasses}/>
@@ -228,6 +243,23 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
             </div>
         )}
         {step === 2 && (
+             <div className="space-y-4 animate-fade-in">
+                <label className="block text-gray-800 text-lg font-bold text-center">{t('registration_goal_title')}</label>
+                 <div className="grid grid-cols-2 gap-3">
+                    {goals.map(goal => (
+                        <button type="button" key={goal.id} onClick={() => handleGoalToggle(goal.id)}
+                            className={`p-4 rounded-lg border-2 text-center transition-all duration-200 active:scale-95 flex flex-col items-center justify-center gap-2 aspect-square
+                                ${selectedGoals.includes(goal.id) ? `${getThemeClasses('bg-light')} ${getThemeClasses('border')} font-semibold` : 'bg-white hover:bg-gray-100 border-gray-200'}`}
+                        >
+                            <div className={selectedGoals.includes(goal.id) ? getThemeClasses('text') : 'text-gray-500'}>{goal.icon}</div>
+                           <span>{goal.text}</span>
+                           {selectedGoals.includes(goal.id) && <div className={`absolute top-2 right-2 p-0.5 rounded-full text-white ${getThemeClasses('bg')}`}><Check size={12}/></div>}
+                        </button>
+                    ))}
+                 </div>
+            </div>
+        )}
+        {step === 3 && (
              <div className="space-y-5 animate-fade-in">
                 <FormInput name="regSchoolName" label={t('school_name')} type="text" value={formData.regSchoolName} onChange={handleInputChange} placeholder={t('school_name')} disabled={isSubmitting} getThemeClasses={getThemeClasses}/>
                 <FormInput name="regClassName" label={t('class_name')} type="text" value={formData.regClassName} onChange={handleInputChange} placeholder={t('class_name')} disabled={isSubmitting} getThemeClasses={getThemeClasses}/>
@@ -241,7 +273,7 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
                 </div>
             </div>
         )}
-        {step === 3 && (
+        {step === 4 && (
             <div className="space-y-2 animate-fade-in">
                 <label className="block text-gray-800 text-sm font-bold">{t('select_subjects')}</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 border rounded-lg bg-gray-50">
@@ -254,8 +286,9 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
                 </div>
             </div>
         )}
-        {step === 4 && (
+        {step === 5 && (
              <div className="space-y-2 animate-fade-in">
+                <p className="font-bold text-center text-gray-700">{t('registration_almost_there')}</p>
                 <label className="block text-gray-800 text-sm font-bold">{t('select_your_avatar')}</label>
                 <AvatarSelectionGrid
                     selectedAvatar={selectedAvatar}
@@ -268,7 +301,7 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
         )}
         <div className="pt-2 flex justify-between items-center space-x-2">
             {step > 1 && <button type="button" onClick={prevStep} disabled={isSubmitting} className="font-semibold py-3 px-4 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition-all duration-200">{t('back_button')}</button>}
-            {step < 4 ? (
+            {step < 5 ? (
                 <button type="button" onClick={nextStep} disabled={isSubmitting || isCheckingEmail} className={`w-full font-bold py-3 px-4 rounded-lg text-white ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} flex justify-center items-center`}>
                     {isCheckingEmail ? <Loader2 className="w-5 h-5 animate-spin" /> : t('next_button')}
                 </button>

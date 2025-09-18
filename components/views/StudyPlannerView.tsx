@@ -2,12 +2,13 @@ import React, { useState, useMemo } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { db, appId, Timestamp } from '../../services/firebase';
 import { ClipboardList, Loader2, PlusCircle, Trash2, Calendar, Clock, CheckSquare, Lightbulb, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
-import type { AppUser, ModalContent, StudyPlan, StudyPlanSubject } from '../../types';
+import type { AppUser, ModalContent, StudyPlan, StudyPlanSubject, CalendarEvent } from '../../types';
 
 interface StudyPlannerViewProps {
   user: AppUser;
   userId: string;
   userStudyPlans: StudyPlan[];
+  allEvents: CalendarEvent[];
   t: (key: string, replacements?: any) => string;
   getThemeClasses: (variant: string) => string;
   tSubject: (key: string) => string;
@@ -17,7 +18,8 @@ interface StudyPlannerViewProps {
 
 const COLORS = ['#10b981', '#3b82f6', '#ec4899', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6', '#6366f1'];
 
-const CreatePlanView: React.FC<Omit<StudyPlannerViewProps, 'userStudyPlans'> & { onPlanCreated: () => void, onCancel: () => void }> = ({ user, userId, t, tSubject, getThemeClasses, showAppModal, language, onPlanCreated, onCancel }) => {
+const CreatePlanView: React.FC<Omit<StudyPlannerViewProps, 'userStudyPlans'> & { onPlanCreated: () => void, onCancel: () => void }> = (props) => {
+    const { user, userId, t, tSubject, getThemeClasses, showAppModal, language, onPlanCreated, onCancel, allEvents } = props;
     const [title, setTitle] = useState('');
     const [subjects, setSubjects] = useState<StudyPlanSubject[]>([{ subject: '', topic: '', amount: '' }]);
     const [testDate, setTestDate] = useState('');
@@ -47,24 +49,56 @@ const CreatePlanView: React.FC<Omit<StudyPlannerViewProps, 'userStudyPlans'> & {
         setIsLoading(true);
 
         try {
+            const now = new Date();
+            const testDateObj = new Date(testDate);
+            testDateObj.setHours(23, 59, 59);
+    
+            const relevantEvents = allEvents.filter(event => {
+                const eventDate = (event.start as any).toDate();
+                return eventDate >= now && eventDate <= testDateObj;
+            });
+    
+            let scheduleString = "The user's current schedule is as follows:\n";
+            if (relevantEvents.length === 0) {
+                scheduleString = "The user's calendar is currently empty for this period.";
+            } else {
+                const eventsByDay: Record<string, CalendarEvent[]> = relevantEvents.reduce((acc, event) => {
+                    const day = (event.start as any).toDate().toISOString().split('T')[0];
+                    if (!acc[day]) acc[day] = [];
+                    acc[day].push(event);
+                    return acc;
+                }, {} as Record<string, CalendarEvent[]>);
+    
+                Object.keys(eventsByDay).sort().forEach(day => {
+                    scheduleString += `- ${day}:\n`;
+                    eventsByDay[day].forEach(event => {
+                        const startTime = (event.start as any).toDate().toTimeString().substring(0, 5);
+                        const endTime = (event.end as any).toDate().toTimeString().substring(0, 5);
+                        scheduleString += `  - Busy from ${startTime} to ${endTime} for "${event.title}".\n`;
+                    });
+                });
+            }
+
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const today = new Date().toLocaleDateString(language, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
             const subjectsInfo = subjects.map(s => `- Subject: ${tSubject(s.subject)}, Topic: ${s.topic}, Material: ${s.amount}`).join('\n');
             const langName = language === 'nl' ? 'Dutch (Nederlands)' : 'English';
-
+            
             const prompt = `You are an expert study planner. My test is on ${testDate}. Today is ${today}.
 I need to study for the following subjects:
 ${subjectsInfo}
 
-Create a realistic, day-by-day study schedule. The generated "task" and "tip" fields MUST be in ${langName}.
+${scheduleString}
 
 **CRITICAL RULES:**
-1.  **Assume School Hours:** Assume I have a normal school/work day from 08:30 to 15:00. Plan all study sessions OUTSIDE of these hours.
-2.  **Distribute Workload:** Break down study material into specific, manageable daily tasks. Spread the workload evenly and realistically; do not schedule more than two distinct study sessions per day.
-3.  **Incorporate Revision:** Add specific revision sessions to review material learned on previous days, especially a day or two before the test.
-4.  **Topic-Specific Tips:** The provided tip MUST be practical, insightful, and directly related to the specific topic of that day's task. Generic tips are unacceptable.
-5.  **Time Slots & Breaks:** Assign a specific time slot (e.g., "16:00 - 17:30"). Don't make sessions longer than 90 minutes without suggesting a short break.
-6.  **24-Hour Time:** Use 24-hour format for all times (e.g., 16:00 for 4 PM, 21:00 for 9 PM).
+1.  **Plan Around My Schedule:** Use my existing schedule to find free time slots. Do NOT schedule study sessions that conflict with my busy times.
+2.  **Add Breaks:** If you see a long block of appointments (like a school day ending at 15:00), schedule a break of at least 1 hour before planning a study session (e.g., start studying at 16:00 or later).
+3.  **Distribute Workload:** Break down study material into specific, manageable daily tasks. Spread the workload evenly and realistically; do not schedule more than two distinct study sessions per day.
+4.  **Incorporate Revision:** Add specific revision sessions to review material learned on previous days, especially a day or two before the test.
+5.  **Topic-Specific Tips:** The provided tip MUST be practical, insightful, and directly related to the specific topic of that day's task. Generic tips are unacceptable.
+6.  **Time Slots & Breaks:** Assign a specific time slot (e.g., "16:00 - 17:30"). Don't make sessions longer than 90 minutes without suggesting a short break within the task description.
+7.  **24-Hour Time:** Use 24-hour format for all times (e.g., 16:00 for 4 PM).
+8.  **Language:** The generated "task" and "tip" fields MUST be in ${langName}.
 
 Return the output as a JSON object. The root object must have a key "schedule" which is an array of objects. Each object represents a study task and must have these properties:
 - "day": The date in "YYYY-MM-DD" format.
@@ -105,7 +139,10 @@ Return the output as a JSON object. The root object must have a key "schedule" w
             const result = JSON.parse(jsonStr);
             
             if (result.schedule && result.schedule.length > 0) {
-                 await db.collection(`artifacts/${appId}/users/${userId}/studyPlans`).add({
+                 const batch = db.batch();
+                 const planRef = db.collection(`artifacts/${appId}/users/${userId}/studyPlans`).doc();
+
+                 batch.set(planRef, {
                     userId,
                     title,
                     testDate: Timestamp.fromDate(new Date(testDate)),
@@ -113,6 +150,29 @@ Return the output as a JSON object. The root object must have a key "schedule" w
                     schedule: result.schedule,
                     createdAt: Timestamp.now()
                 });
+
+                result.schedule.forEach((item: any) => {
+                    const [startTime, endTimeStr] = item.time.split(' - ');
+                    const eventDate = new Date(`${item.day}T${startTime}`);
+                    const eventEndDate = endTimeStr ? new Date(`${item.day}T${endTimeStr}`) : new Date(eventDate.getTime() + 90 * 60 * 1000);
+
+                    if (!isNaN(eventDate.getTime())) {
+                        const eventRef = db.collection(`artifacts/${appId}/users/${userId}/calendarEvents`).doc();
+                        batch.set(eventRef, {
+                            title: `${t('planner_task')}: ${item.task.substring(0, 50)}${item.task.length > 50 ? '...' : ''}`,
+                            description: `${t('planner_tip')}: ${item.tip}`,
+                            start: Timestamp.fromDate(eventDate),
+                            end: Timestamp.fromDate(eventEndDate),
+                            subject: item.subject,
+                            type: 'study_plan',
+                            ownerId: userId,
+                            createdAt: Timestamp.now(),
+                            studyPlanId: planRef.id,
+                        });
+                    }
+                });
+
+                await batch.commit();
                 showAppModal({ text: t('plan_created_success') });
                 onPlanCreated();
             } else {
@@ -272,7 +332,6 @@ const StudyPlannerView: React.FC<StudyPlannerViewProps> = (props) => {
                                         <p className="text-sm text-gray-500">{t('plan_for_date', { date: (plan.testDate as any).toDate().toLocaleDateString(language) })}</p>
                                     </div>
                                     <div className="flex gap-2">
-                                        {/* FIX: Corrected a variable name from 'id' to 'plan.id' in the onClick handler for toggling the display of a study plan's details, resolving a 'Cannot find name' error. */}
                                         <button onClick={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)} className="p-2 bg-gray-200 hover:bg-gray-300 rounded-md">
                                             {expandedPlanId === plan.id ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
                                         </button>

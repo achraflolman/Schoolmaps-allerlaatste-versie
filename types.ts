@@ -1,4 +1,3 @@
-// FIX: Import FirebaseTimestamp to resolve type errors within this file.
 import type { FirebaseTimestamp } from './services/firebase';
 
 export interface Flashcard {
@@ -13,7 +12,14 @@ export interface Flashcard {
     easeFactor?: number;
 }
 
-// FIX: Added export for AppUser type.
+export interface SyncedCalendar {
+    id: string;
+    name: string;
+    url: string;
+    provider: 'google' | 'apple' | 'teams' | 'canvas' | 'magister' | 'other';
+    enabled: boolean;
+}
+
 export interface AppUser {
     uid: string;
     email: string;
@@ -42,9 +48,10 @@ export interface AppUser {
     aiBotName: string;
     aiBotAvatarUrl: string | null;
     hasCompletedOnboarding: boolean;
+    goals?: string[];
+    syncedCalendars?: SyncedCalendar[];
 }
 
-// FIX: Added export for FileData type.
 export interface FileData {
     id: string;
     title: string;
@@ -56,28 +63,31 @@ export interface FileData {
     storagePath: string;
 }
 
-// FIX: Added export for CalendarEvent type.
 export interface CalendarEvent {
     id: string;
     title: string;
     description?: string;
-    type: 'test' | 'presentation' | 'homework' | 'oral' | 'other' | 'work' | 'school';
+    type: 'test' | 'presentation' | 'homework' | 'oral' | 'other' | 'work' | 'school' | 'free_period' | 'study_plan';
     subject: string;
     start: FirebaseTimestamp;
     end: FirebaseTimestamp;
     ownerId: string;
     createdAt: FirebaseTimestamp;
     updatedAt?: FirebaseTimestamp;
+    isSynced?: boolean;
+    sourceCalendar?: {
+        name: string;
+        provider: SyncedCalendar['provider'];
+    };
+    studyPlanId?: string;
 }
 
-// FIX: Added export for ModalContent type.
 export interface ModalContent {
     text: string;
     confirmAction?: () => void;
     cancelAction?: () => void;
 }
 
-// FIX: Added export for Notification type.
 export interface Notification {
     id: string;
     title: string;
@@ -91,7 +101,6 @@ export interface Notification {
     subject?: string;
 }
 
-// FIX: Added export for BroadcastData type.
 export interface BroadcastData {
     id: string;
     title: string;
@@ -100,7 +109,6 @@ export interface BroadcastData {
     createdAt: FirebaseTimestamp;
 }
 
-// FIX: Added export for ToDoTask type.
 export interface ToDoTask {
     id: string;
     text: string;
@@ -111,14 +119,12 @@ export interface ToDoTask {
     reminderAt?: FirebaseTimestamp;
 }
 
-// FIX: Added export for AdminSettings type.
 export interface AdminSettings {
     themePreference: string;
     pinProtectionEnabled: boolean;
     fontPreference: string;
 }
 
-// FIX: Added export for Note type.
 export interface Note {
     id: string;
     title: string;
@@ -129,7 +135,6 @@ export interface Note {
     updatedAt?: FirebaseTimestamp;
 }
 
-// FIX: Added export for FlashcardSet type.
 export interface FlashcardSet {
     id: string;
     name: string;
@@ -141,14 +146,12 @@ export interface FlashcardSet {
     sharerName?: string;
 }
 
-// FIX: Added export for StudyPlanSubject type.
 export interface StudyPlanSubject {
     subject: string;
     topic: string;
     amount: string;
 }
 
-// FIX: Added export for StudyScheduleItem type.
 export interface StudyScheduleItem {
     day: string;
     time: string;
@@ -157,7 +160,6 @@ export interface StudyScheduleItem {
     tip: string;
 }
 
-// FIX: Added export for StudyPlan type.
 export interface StudyPlan {
     id: string;
     userId: string;
@@ -168,7 +170,6 @@ export interface StudyPlan {
     createdAt: FirebaseTimestamp;
 }
 
-// FIX: Added export for StudySession type.
 export interface StudySession {
     id: string;
     userId: string;
@@ -177,7 +178,6 @@ export interface StudySession {
     taskId: string | null;
 }
 
-// FIX: Added export for FeedbackReply type.
 export interface FeedbackReply {
     text: string;
     repliedAt: FirebaseTimestamp;
@@ -185,7 +185,6 @@ export interface FeedbackReply {
     isAdminReply: boolean;
 }
 
-// FIX: Added export for Feedback type.
 export interface Feedback {
     id: string;
     userId: string;

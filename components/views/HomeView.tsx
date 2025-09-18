@@ -1,5 +1,3 @@
-
-
 import React, { useMemo } from 'react';
 import type { AppUser, CalendarEvent, ToDoTask, StudySession, FlashcardSet, FileData } from '../../types';
 import { ArrowUp, ArrowDown, CheckCircle, Clock, Layers, Calendar, FileText, ChevronRight, Link } from 'lucide-react';
@@ -67,9 +65,12 @@ const TodaysAgenda: React.FC<{
                 <ul className="space-y-3">
                     {events.map(event => (
                         <li key={event.id} className="flex items-center gap-3">
-                            <div className={`w-1.5 h-10 rounded-full ${getThemeClasses('bg')}`}></div>
-                            <div>
-                                <p className="font-semibold">{event.title}</p>
+                            <div className={`w-1.5 h-10 rounded-full ${event.isSynced ? 'bg-yellow-400' : getThemeClasses('bg')}`}></div>
+                            <div className="flex-grow">
+                                <div className="flex items-center gap-1.5">
+                                    {event.isSynced && <Link size={12} className="text-gray-400"/>}
+                                    <p className="font-semibold">{event.title}</p>
+                                </div>
                                 <p className="text-sm text-gray-500">{(event.start as any).toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                             </div>
                         </li>
@@ -119,7 +120,7 @@ interface HomeViewProps {
   user: AppUser;
   t: (key: string, replacements?: any) => string;
   getThemeClasses: (variant: string) => string;
-  userEvents: CalendarEvent[];
+  allEvents: CalendarEvent[];
   language: 'nl' | 'en';
   allUserTasks: ToDoTask[];
   allStudySessions: StudySession[];
@@ -128,7 +129,7 @@ interface HomeViewProps {
   setCurrentView: (view: string) => void;
 }
 
-const HomeView: React.FC<HomeViewProps> = ({ user, t, getThemeClasses, userEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView }) => {
+const HomeView: React.FC<HomeViewProps> = ({ user, t, getThemeClasses, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView }) => {
     const userFirstName = user.userName?.split(' ')[0] || '';
     const today = new Date();
 
@@ -168,10 +169,10 @@ const HomeView: React.FC<HomeViewProps> = ({ user, t, getThemeClasses, userEvent
     const todaysEvents = useMemo(() => {
         const todayStart = new Date(); todayStart.setHours(0,0,0,0);
         const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
-        return userEvents
+        return allEvents
             .filter(e => e.start.toDate() >= todayStart && e.start.toDate() <= todayEnd)
             .sort((a, b) => (a.start as any).toMillis() - (b.start as any).toMillis());
-    }, [userEvents]);
+    }, [allEvents]);
 
     const widgetComponents: { [key: string]: React.ReactNode } = {
         agenda: <TodaysAgenda key="agenda" events={todaysEvents} t={t} getThemeClasses={getThemeClasses} onNavigate={() => setCurrentView('calendar')} />,
