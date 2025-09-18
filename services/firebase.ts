@@ -1,10 +1,11 @@
 // FIX: Use Firebase v9 compat libraries to match the v8 API surface.
 // Firebase v8 imports
-
-import firebase from 'firebase/app';
-import 'firebase/auth';
-import 'firebase/firestore';
-import 'firebase/storage';
+// FIX: Switched from 'firebase/app' to 'firebase/compat/app' and other compat imports
+// to support the v8 namespaced syntax (e.g., firebase.auth()).
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
+import 'firebase/compat/storage';
 
 // ##################################################################
 // #  IMPORTANT: REPLACE WITH YOUR ACTUAL FIREBASE CONFIGURATION    #
