@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { db, appId, Timestamp } from '../../../services/firebase';
 import type { ToDoTask, AppUser, ModalContent } from '../../../types';
-import { PlusCircle, Trash2, Bell, Loader2 } from 'lucide-react';
+import { PlusCircle, Trash2, Bell, Loader2, Calendar, Repeat } from 'lucide-react';
 
 interface ToDoListViewProps {
   userId: string;
@@ -91,25 +91,26 @@ const ReminderModal: React.FC<{
 
 
 const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeClasses, showAppModal }) => {
-  const [tasks, setTasks] = useState<ToDoTask[]>([]);
-  const [newTask, setNewTask] = useState('');
+  const [allTasks, setAllTasks] = useState<ToDoTask[]>([]);
+  const [newTaskText, setNewTaskText] = useState('');
+  const [newDueDate, setNewDueDate] = useState('');
+  const [isRecurring, setIsRecurring] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<ToDoTask | null>(null);
   const reminderTimeoutsRef = useRef(new Map<string, number>());
 
   const scheduleNotification = useCallback((task: ToDoTask) => {
-    // Clear any existing timeout for this task to prevent duplicates
     if (reminderTimeoutsRef.current.has(task.id)) {
         clearTimeout(reminderTimeoutsRef.current.get(task.id));
         reminderTimeoutsRef.current.delete(task.id);
     }
 
-    if (task.reminderAt && task.reminderAt.toDate() > new Date()) {
+    if (task.reminderAt && task.reminderAt.toDate() > new Date() && !task.completed) {
         const delay = task.reminderAt.toDate().getTime() - Date.now();
         const timeoutId = window.setTimeout(() => {
             new Notification(t('task_reminder_title'), {
                 body: task.text,
-                icon: '/apple-touch-icon.png' // Using app icon for notification
+                icon: '/apple-touch-icon.png'
             });
             reminderTimeoutsRef.current.delete(task.id);
         }, delay);
@@ -117,25 +118,18 @@ const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeCl
     }
   }, [t]);
 
-
   useEffect(() => {
-    if (user.uid === 'guest-user') {
-        setTasks([]);
-        return;
-    }
+    if (user.uid === 'guest-user') return;
     const q = db.collection(`artifacts/${appId}/users/${userId}/tasks`).orderBy('createdAt', 'desc');
     const unsubscribe = q.onSnapshot(snapshot => {
       const fetchedTasks = snapshot.docs.map(d => ({id: d.id, ...d.data()} as ToDoTask));
-      setTasks(fetchedTasks);
-      // Schedule notifications for all tasks with future reminders
+      setAllTasks(fetchedTasks);
       fetchedTasks.forEach(scheduleNotification);
     }, (error) => {
-        console.error("Error fetching to-do tasks:", error);
         showAppModal({text: t('error_failed_to_load_tasks')});
     });
 
     return () => {
-      // Cleanup: clear all timeouts when the component unmounts
       for (const timeoutId of reminderTimeoutsRef.current.values()) {
           clearTimeout(timeoutId);
       }
@@ -143,126 +137,147 @@ const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeCl
       unsubscribe();
     };
   }, [userId, user.uid, showAppModal, t, scheduleNotification]);
-  
+
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (user.uid === 'guest-user') {
         showAppModal({ text: t('error_guest_action_not_allowed') });
         return;
     }
-    if(!newTask.trim()) return showAppModal({text: t('error_empty_task')});
-    await db.collection(`artifacts/${appId}/users/${userId}/tasks`).add({
-        text: newTask,
+    if(!newTaskText.trim()) return showAppModal({text: t('error_empty_task')});
+    
+    const taskData: Omit<ToDoTask, 'id'> = {
+        text: newTaskText,
         completed: false,
         ownerId: userId,
-        createdAt: Timestamp.now()
-    });
-    setNewTask('');
-    showAppModal({text: t('task_added_success')});
+        createdAt: Timestamp.now(),
+        recurring: isRecurring ? 'daily' : null,
+        // If recurring, no due date is needed. If not, use the selected one or default to today.
+        dueDate: isRecurring ? undefined : Timestamp.fromDate(new Date((newDueDate || toLocalDateString(new Date())) + 'T00:00:00'))
+    };
+
+    await db.collection(`artifacts/${appId}/users/${userId}/tasks`).add(taskData);
+    setNewTaskText('');
+    setNewDueDate('');
+    setIsRecurring(false);
   };
 
-  const handleToggleTask = async (id: string, completed: boolean) => {
-    if (user.uid === 'guest-user') {
-        showAppModal({ text: t('error_guest_action_not_allowed') });
-        return;
-    }
-    // FIX: Use Partial<ToDoTask> to avoid direct reference to firebase.firestore.Timestamp type, resolving the namespace error.
-    const updateData: Partial<ToDoTask> = { completed: !completed };
-    if (!completed) { // If task is being marked as complete
-        updateData.completedAt = Timestamp.now();
-    }
-    await db.doc(`artifacts/${appId}/users/${userId}/tasks/${id}`).update(updateData);
-    showAppModal({text: t('task_updated_success')});
+  const handleToggleTask = async (task: ToDoTask) => {
+    if (user.uid === 'guest-user') return;
+    const isCompleted = !task.completed;
+    const updateData: Partial<ToDoTask> = { 
+        completed: isCompleted,
+        completedAt: isCompleted ? Timestamp.now() : undefined,
+    };
+    await db.doc(`artifacts/${appId}/users/${userId}/tasks/${task.id}`).update(updateData);
   };
   
   const handleDeleteTask = (id: string) => {
-    if (user.uid === 'guest-user') {
-        showAppModal({ text: t('error_guest_action_not_allowed') });
-        return;
-    }
     showAppModal({
       text: t('confirm_delete_task'),
       confirmAction: async () => {
         await db.doc(`artifacts/${appId}/users/${userId}/tasks/${id}`).delete();
-        // Clear any scheduled notification for the deleted task
         if (reminderTimeoutsRef.current.has(id)) {
             clearTimeout(reminderTimeoutsRef.current.get(id));
             reminderTimeoutsRef.current.delete(id);
         }
-        showAppModal({text: t('task_deleted_success')});
       },
       cancelAction: () => {}
     });
   };
 
   const handleSaveReminder = async (task: ToDoTask, reminderDateTime: Date | null) => {
-    if (user.uid === 'guest-user') {
-        showAppModal({ text: t('error_guest_action_not_allowed') });
-        return;
-    }
-    if (reminderDateTime && Notification.permission === 'denied') {
-        showAppModal({ text: t('notifications_denied_error') });
-        return;
-    }
-
-    if (reminderDateTime && Notification.permission === 'default') {
+    if (reminderDateTime && Notification.permission !== 'granted') {
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
-            // FIX: Corrected a typo from 'showAppAppModal' to 'showAppModal'.
             showAppModal({ text: t('notifications_denied_prompt') });
             return;
         }
     }
-
     const reminderAt = reminderDateTime ? Timestamp.fromDate(reminderDateTime) : null;
     await db.doc(`artifacts/${appId}/users/${userId}/tasks/${task.id}`).update({ reminderAt });
-    
-    // The onSnapshot listener will automatically pick up the change and reschedule the notification.
     setIsReminderModalOpen(false);
   };
+  
+  const tasksForToday = useMemo(() => {
+    const todayStr = toLocalDateString(new Date());
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+  
+    return allTasks
+      .map(task => {
+        const isCompletedToday = task.completed && task.completedAt && task.completedAt.toDate() >= todayStart;
+  
+        // Daily recurring tasks are always relevant for today
+        if (task.recurring === 'daily') {
+          return { ...task, completed: isCompletedToday };
+        }
+        // Non-recurring tasks are only relevant if due today
+        else if (task.dueDate && toLocalDateString(task.dueDate.toDate()) === todayStr) {
+          return task;
+        }
+        // Completed non-recurring tasks from today should also be shown
+        else if (isCompletedToday && !task.recurring) {
+            return task;
+        }
+        
+        return null; // This task is not for today
+      })
+      .filter((task): task is ToDoTask => task !== null) // Remove nulls
+      .sort((a, b) => (a.completed ? 1 : -1) - (b.completed ? 1 : -1) || a.createdAt.toMillis() - b.createdAt.toMillis());
+  }, [allTasks]);
+
+
+  const TaskItem = ({ task }: { task: ToDoTask }) => (
+    <div className="bg-white p-3 rounded-lg shadow-sm flex items-center justify-between transition-shadow hover:shadow-md gap-2">
+        <label className="flex items-center gap-3 cursor-pointer w-full">
+            <input type="checkbox" checked={task.completed} onChange={() => handleToggleTask(task)} className={`form-checkbox h-5 w-5 rounded transition-colors ${getThemeClasses('text')} focus:ring-0`}/>
+            <div className="flex-1">
+              <span className={`${task.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>{task.text}</span>
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                {task.dueDate && <span><Calendar size={12} className="inline mr-1"/>{task.dueDate.toDate().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
+                {task.recurring && <span><Repeat size={12} className="inline mr-1"/>{t('recurring_daily')}</span>}
+                {task.reminderAt && <span><Bell size={12} className={`inline mr-1 ${getThemeClasses('text')}`} />{task.reminderAt.toDate().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>}
+              </div>
+            </div>
+        </label>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button onClick={() => { setSelectedTask(task); setIsReminderModalOpen(true); }} className="p-2 text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors active:scale-90"><Bell className="w-4 h-4"/></button>
+          <button onClick={() => handleDeleteTask(task.id)} className="p-2 text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors active:scale-90"><Trash2 className="w-4 h-4"/></button>
+        </div>
+    </div>
+  );
 
   return (
     <>
-      <ReminderModal
-          task={selectedTask!}
-          isOpen={isReminderModalOpen}
-          onClose={() => setIsReminderModalOpen(false)}
-          onSave={handleSaveReminder}
-          t={t}
-          getThemeClasses={getThemeClasses}
-      />
+      {selectedTask && <ReminderModal task={selectedTask} isOpen={isReminderModalOpen} onClose={() => setIsReminderModalOpen(false)} onSave={handleSaveReminder} t={t} getThemeClasses={getThemeClasses} />}
       <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4`}>
-          <form onSubmit={handleAddTask} className="flex gap-2">
-              <input type="text" value={newTask} onChange={e => setNewTask(e.target.value)} placeholder={t('add_task_placeholder')} className="flex-grow p-2 border rounded-lg"/>
-              <button type="submit" className={`flex items-center text-white font-bold py-2 px-4 rounded-lg transition-transform active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}>
-                  <PlusCircle className="w-5 h-5 mr-2"/> {t('add_task_button')}
-              </button>
+          <form onSubmit={handleAddTask} className="p-3 bg-white rounded-lg shadow-sm space-y-2">
+              <input type="text" value={newTaskText} onChange={e => setNewTaskText(e.target.value)} placeholder={t('add_task_placeholder')} className="w-full p-2 border rounded-lg"/>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-4">
+                    <div className="relative">
+                        <input type="date" value={newDueDate} onChange={e => setNewDueDate(e.target.value)} id="due-date-picker" className="p-2 border rounded-lg w-36" disabled={isRecurring}/>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={isRecurring} onChange={e => setIsRecurring(e.target.checked)} className={`h-4 w-4 rounded ${getThemeClasses('text')} focus:ring-0`} />
+                        <span className="text-sm font-semibold">{t('recurring_daily')}</span>
+                    </label>
+                </div>
+                <button type="submit" className={`flex items-center text-white font-bold py-2 px-4 rounded-lg transition-transform active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}>
+                    <PlusCircle className="w-5 h-5 mr-2"/> {t('add_task_button')}
+                </button>
+              </div>
           </form>
-          <div className="space-y-2">
-              {tasks.length === 0 ? (
-                  <p className="text-center italic text-gray-500 py-4">{t('no_tasks_found')}</p>
-              ) : (
-                  tasks.map(task => (
-                      <div key={task.id} className="bg-white p-3 rounded-lg shadow-sm flex items-center justify-between transition-shadow hover:shadow-md gap-2">
-                          <label className="flex items-center gap-3 cursor-pointer w-full">
-                              <input type="checkbox" checked={task.completed} onChange={() => handleToggleTask(task.id, task.completed)} className={`form-checkbox h-5 w-5 rounded transition-colors ${getThemeClasses('text')} focus:ring-0`}/>
-                              <div className="flex-1">
-                                <span className={`${task.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>{task.text}</span>
-                                {task.reminderAt && (
-                                    <p className="text-xs text-gray-500 flex items-center gap-1">
-                                        <Bell size={12} className={getThemeClasses('text')} />
-                                        {task.reminderAt.toDate().toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                    </p>
-                                )}
-                              </div>
-                          </label>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <button onClick={() => { setSelectedTask(task); setIsReminderModalOpen(true); }} className="p-2 text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors active:scale-90"><Bell className="w-4 h-4"/></button>
-                            <button onClick={() => handleDeleteTask(task.id)} className="p-2 text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors active:scale-90"><Trash2 className="w-4 h-4"/></button>
-                          </div>
-                      </div>
-                  ))
-              )}
+
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-bold text-lg mb-2">{t('tasks_for_today')}</h3>
+              <div className="space-y-2">
+                {tasksForToday.length > 0 ? tasksForToday.map(task => <TaskItem key={task.id} task={task} />) : <p className="text-center italic text-gray-500 py-4">{t('no_tasks_for_today')}</p>}
+              </div>
+               <p className="text-center text-xs text-gray-500 mt-4">{t('todo_daily_refresh_note')}</p>
+            </div>
           </div>
       </div>
     </>

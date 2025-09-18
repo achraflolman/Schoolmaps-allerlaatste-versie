@@ -119,7 +119,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen
                 </button>
             ))}
              <div className="py-4 text-center text-xs text-gray-400">
-                <p>Schoolmaps &copy; 2025</p>
+                <p>StudyBox &copy; 2025</p>
              </div>
         </div>
       </div>

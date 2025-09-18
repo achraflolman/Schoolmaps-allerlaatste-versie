@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Tool, Type } from '@google/genai';
 import { Send, Loader2, Bot, User, X, Settings, Save } from 'lucide-react';
 import { Timestamp } from '../../services/firebase';
-import type { AppUser, ModalContent, CalendarEvent } from '../../types';
+import type { AppUser, ModalContent, CalendarEvent, StudyPlan } from '../../types';
 import AvatarSelectionGrid from '../ui/AvatarSelectionGrid';
 
 interface AIChatViewProps {
@@ -15,6 +16,7 @@ interface AIChatViewProps {
     addCalendarEvent: (eventData: Omit<CalendarEvent, 'id' | 'ownerId' | 'createdAt'>) => Promise<string>;
     removeCalendarEvent: (title: string, date: string) => Promise<string>;
     userEvents: CalendarEvent[];
+    userStudyPlans: StudyPlan[];
     onProfileUpdate: (updatedData: Partial<AppUser>) => Promise<void>;
 }
 
@@ -89,7 +91,7 @@ const AISettingsModal: React.FC<{
 };
 
 
-const AIChatView: React.FC<AIChatViewProps> = ({ user, t, tSubject, getThemeClasses, showAppModal, onClose, addCalendarEvent, removeCalendarEvent, userEvents, onProfileUpdate }) => {
+const AIChatView: React.FC<AIChatViewProps> = ({ user, t, tSubject, getThemeClasses, showAppModal, onClose, addCalendarEvent, removeCalendarEvent, userEvents, userStudyPlans, onProfileUpdate }) => {
     const [chat, setChat] = useState<Chat | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputValue, setInputValue] = useState('');
@@ -111,6 +113,13 @@ const AIChatView: React.FC<AIChatViewProps> = ({ user, t, tSubject, getThemeClas
     const isOverLimit = wordCount > 100;
 
     useEffect(() => {
+        if (!process.env.API_KEY) {
+            console.error("Gemini API key is missing. Please set it in your environment variables.");
+            showAppModal({ text: t('error_missing_api_key') });
+            onClose();
+            return;
+        }
+
         const addEventTool: FunctionDeclaration = {
             name: "addCalendarEvent",
             description: "Adds a new event to the user's calendar. Use the current year for dates unless another year is specified. Today's date is " + new Date().toISOString().split('T')[0],
@@ -152,11 +161,29 @@ const AIChatView: React.FC<AIChatViewProps> = ({ user, t, tSubject, getThemeClas
             }
         };
 
-        const tools: Tool[] = [{ functionDeclarations: [addEventTool, removeEventTool, getEventsTool] }];
+        const getStudyPlansTool: FunctionDeclaration = {
+            name: "getStudyPlans",
+            description: "Retrieves an overview of all the user's study plans.",
+            parameters: { type: Type.OBJECT, properties: {} }
+        };
+
+        const getStudyPlanDetailsTool: FunctionDeclaration = {
+            name: "getStudyPlanDetails",
+            description: "Retrieves the detailed schedule for a specific study plan, identified by its title.",
+            parameters: {
+                type: Type.OBJECT,
+                properties: {
+                    title: { type: Type.STRING, description: "The exact title of the study plan to retrieve." }
+                },
+                required: ["title"]
+            }
+        };
+
+        const tools: Tool[] = [{ functionDeclarations: [addEventTool, removeEventTool, getEventsTool, getStudyPlansTool, getStudyPlanDetailsTool] }];
 
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const systemInstructionText = t('ai_system_instruction', { botName, userName: user.userName });
+            const systemInstructionText = t('ai_system_instruction', { botName, userName: user.userName, subjects: availableSubjects.join(', ') });
             
             const chatInstance = ai.chats.create({
                 model: 'gemini-2.5-flash',
@@ -207,7 +234,7 @@ const AIChatView: React.FC<AIChatViewProps> = ({ user, t, tSubject, getThemeClas
         
         inputRef.current?.focus();
 
-    }, [t, showAppModal, botName, user.userName, isInitialized, user.selectedSubjects, user.customSubjects]);
+    }, [t, showAppModal, botName, user.userName, isInitialized, user.selectedSubjects, user.customSubjects, onClose]);
 
     useEffect(() => {
         if (chatContainerRef.current) {
@@ -267,6 +294,26 @@ const AIChatView: React.FC<AIChatViewProps> = ({ user, t, tSubject, getThemeClas
                         resultText = `On ${args.date}, you have: ${eventDescriptions}.`;
                     } else {
                         resultText = `I couldn't find any events for ${args.date}. Would you like to try another date?`;
+                    }
+                } else if (call.name === 'getStudyPlans') {
+                    if (!userStudyPlans || userStudyPlans.length === 0) {
+                        resultText = "The user currently has no study plans.";
+                    } else {
+                        const planSummaries = userStudyPlans.map(p => 
+                            `Plan '${p.title}' for test on ${p.testDate.toDate().toLocaleDateString(user.languagePreference)}. It covers subjects: ${p.subjects.map(s => tSubject(s.subject)).join(', ')}.`
+                        ).join('\n');
+                        resultText = `The user has ${userStudyPlans.length} study plan(s):\n${planSummaries}`;
+                    }
+                } else if (call.name === 'getStudyPlanDetails') {
+                    const args = call.args as { title: string };
+                    const plan = userStudyPlans.find(p => p.title.toLowerCase() === args.title.toLowerCase());
+                    if (plan) {
+                        const scheduleDetails = plan.schedule.map(item => 
+                            `- On ${item.day} at ${item.time}, study for ${tSubject(item.subject)}: '${item.task}'. Tip: ${item.tip}`
+                        ).join('\n');
+                        resultText = `Here is the schedule for '${plan.title}':\n${scheduleDetails}`;
+                    } else {
+                        resultText = `Could not find a study plan with the title '${args.title}'. The available plans are: ${userStudyPlans.map(p => p.title).join(', ')}.`;
                     }
                 }
     

@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 
@@ -103,7 +105,7 @@ const LoadingScreen: React.FC<{ getThemeClasses: (variant: string) => string; la
                 .animate-bounce-in { animation: bounce-in 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
                 .animate-text-fade { animation: text-fade 2s ease-in-out infinite; }
             `}</style>
-           <img src="https://i.imgur.com/n5jikg9.png" alt="Schoolmaps Logo" className="h-auto mb-8 animate-bounce-in" style={{ maxWidth: '180px' }} />
+           <img src="https://i.imgur.com/J9xgXED.png" alt="StudyBox Logo" className="h-auto mb-8 animate-bounce-in" style={{ maxWidth: '180px' }} />
            <div role="status" aria-label="Loading application" className="flex flex-col items-center gap-4">
               <svg aria-hidden="true" className="w-10 h-10 text-white animate-spin" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="rgba(255,255,255,0.3)"/>
@@ -175,12 +177,14 @@ const MainAppLayout: React.FC<{
     setSelectedTaskForTimer: (t: ToDoTask | null) => void;
     addCalendarEvent: (eventData: Omit<CalendarEvent, 'id' | 'ownerId' | 'createdAt'>) => Promise<string>;
     removeCalendarEvent: (title: string, date: string) => Promise<string>;
+    currentTime: Date;
 }> = ({
     user, t, tSubject, getThemeClasses, showAppModal, copyTextToClipboard, setIsAvatarModalOpen,
     handleLogout, currentView, setCurrentView, currentSubject, setCurrentSubject, handleGoHome,
     subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions,
     language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, closeAppModal, notifications, unreadCount, showBroadcast,
-    focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, addCalendarEvent, removeCalendarEvent
+    focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, addCalendarEvent, removeCalendarEvent,
+    currentTime
 }) => {
     
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -203,17 +207,18 @@ const MainAppLayout: React.FC<{
         };
     }, [isSidebarOpen]);
 
-    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents: allEvents, allUserFiles, allUserNotes, allUserFlashcardSets };
+    // FIX: Pass `onProfileUpdate` to `toolsViewProps` to satisfy the `ToolsViewProps` interface.
+    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents: allEvents, allUserFiles, allUserNotes, allUserFlashcardSets, onProfileUpdate };
 
     const mainContent = (
         <div>
-            {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, tSubject, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView }} />}
+            {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, tSubject, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView, currentTime }} />}
             {currentView === 'home' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
             
             {currentView === 'files' && !currentSubject && <SubjectSelectionView {...{ user, t, tSubject, getThemeClasses, setCurrentSubject }} />}
             {currentView === 'files' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
 
-            {currentView === 'calendar' && <CalendarView {...{ allEvents, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user, onProfileUpdate }} />}
+            {currentView === 'calendar' && <CalendarView {...{ allEvents, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user, onProfileUpdate, currentTime }} />}
             {currentView === 'planner' && <StudyPlannerView {...{ allEvents, userStudyPlans, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user }} />}
             {currentView === 'tools' && <ToolsView {...toolsViewProps} />}
             {currentView === 'settings' && <SettingsView {...{ user, t, getThemeClasses, language, setLanguage, themeColor, setThemeColor, showAppModal, tSubject, setCurrentView, onProfileUpdate, fontFamily, setFontFamily, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, setIsAvatarModalOpen }} />}
@@ -225,7 +230,7 @@ const MainAppLayout: React.FC<{
     );
     
     return (
-        <div className={`flex h-screen w-full`}>
+        <div className={'flex h-screen w-full'}>
              <Sidebar {...{ user, isSidebarOpen, setIsSidebarOpen, sidebarRef, t, getThemeClasses, setCurrentView, currentView, currentSubject, setIsAvatarModalOpen }} />
             <main className="flex-1 flex flex-col overflow-y-auto bg-slate-50">
                <header className="p-4 sticky top-0 bg-white/80 backdrop-blur-lg z-30 border-b border-gray-200">
@@ -234,7 +239,7 @@ const MainAppLayout: React.FC<{
                             <Menu className="w-6 h-6" />
                         </button>
                          <h1 onClick={handleGoHome} className={`text-xl sm:text-2xl font-bold ${getThemeClasses('text-logo')} cursor-pointer transition-transform hover:scale-105 active:scale-100`}>
-                            Schoolmaps
+                            StudyBox
                          </h1>
                         <div className="flex items-center gap-2">
                            {isTimerActive && (
@@ -285,6 +290,7 @@ const MainAppLayout: React.FC<{
                     tSubject={tSubject}
                     userEvents={allEvents}
                     onProfileUpdate={onProfileUpdate}
+                    userStudyPlans={userStudyPlans}
                 />
             )}
         </div>
@@ -384,8 +390,10 @@ const App: React.FC = () => {
     const [isUserDetailModalOpen, setIsUserDetailModalOpen] = useState(false);
     const [selectedUserForDetail, setSelectedUserForDetail] = useState<AppUser | null>(null);
     const [isPinVerificationModalOpen, setIsPinVerificationModalOpen] = useState(false);
-    const [verificationSkipped, setVerificationSkipped] = useState(sessionStorage.getItem('schoolmaps_verification_skipped') === 'true');
+    const [verificationSkipped, setVerificationSkipped] = useState(sessionStorage.getItem('studybox_verification_skipped') === 'true');
     const [showAiSetup, setShowAiSetup] = useState(false);
+    const [currentTime, setCurrentTime] = useState(new Date());
+
     
     // Admin specific state
     const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
@@ -488,7 +496,7 @@ const App: React.FC = () => {
 
     const handleIntroFinish = useCallback(() => {
         try {
-            localStorage.setItem('schoolmaps_intro_seen', 'true');
+            localStorage.setItem('studybox_intro_seen', 'true');
         } catch (error) {
             console.error("Could not set localStorage item:", error);
         }
@@ -496,7 +504,7 @@ const App: React.FC = () => {
     }, []);
 
     const handleSkipVerification = () => {
-        sessionStorage.setItem('schoolmaps_verification_skipped', 'true');
+        sessionStorage.setItem('studybox_verification_skipped', 'true');
         setVerificationSkipped(true);
     };
 
@@ -575,12 +583,20 @@ const App: React.FC = () => {
         };
     }, [t, showAppModal]);
     
+    // Effect to update current time every minute for "in progress" badges
+    useEffect(() => {
+        const timerId = setInterval(() => {
+            setCurrentTime(new Date());
+        }, 60000); // Update every minute
+        return () => clearInterval(timerId);
+    }, []);
+
     const handleLogout = useCallback(() => {
         showAppModal({
             text: t('confirm_logout'),
             confirmAction: async () => {
                 sessionStorage.setItem('logout-event', 'true');
-                sessionStorage.removeItem('schoolmaps_verification_skipped');
+                sessionStorage.removeItem('studybox_verification_skipped');
                 await auth.signOut();
                 setIsAdmin(false);
                 setIsPinVerified(false);
@@ -720,7 +736,7 @@ const App: React.FC = () => {
         for (const cal of calendarsToSync) {
             try {
                 const targetUrl = cal.url.replace(/^webcal:\/\//i, 'https://');
-                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+                const proxyUrl = `https://corsproxy.io/?${targetUrl}`;
                 const response = await fetch(proxyUrl);
                 if (!response.ok) throw new Error(`Failed to fetch calendar: ${response.statusText}`);
                 const icsData = await response.text();
@@ -728,10 +744,11 @@ const App: React.FC = () => {
                 allParsedEvents = [...allParsedEvents, ...parsed];
             } catch (error) {
                 console.error(`Error syncing calendar "${cal.name}":`, error);
+                showAppModal({ text: t('error_sync_calendar', { name: cal.name }) });
             }
         }
         setSyncedEvents(allParsedEvents);
-    }, [parseIcs]);
+    }, [parseIcs, showAppModal, t]);
 
     // Data fetching effects, now at top level
     useEffect(() => {
@@ -750,7 +767,7 @@ const App: React.FC = () => {
         }
         
         fetchAndParseCalendars(user);
-        const calendarSyncInterval = setInterval(() => fetchAndParseCalendars(user), 60000);
+        const calendarSyncInterval = setInterval(() => fetchAndParseCalendars(user), 20000);
 
         const eventsQuery = db.collection(`artifacts/${appId}/users/${user.uid}/calendarEvents`).orderBy('start', 'asc');
         const unsubscribeEvents = eventsQuery.onSnapshot((snapshot) => {
@@ -1245,17 +1262,6 @@ const App: React.FC = () => {
                     return;
                 }
                 
-                if (!firebaseUser.emailVerified && !verificationSkipped) {
-                    const tempUser = {
-                        uid: firebaseUser.uid,
-                        email: firebaseUser.email || '',
-                        userName: firebaseUser.displayName || t('guest_fallback_name'),
-                    } as AppUser;
-                    setUser(tempUser);
-                    setAppStatus('awaiting-verification');
-                    return;
-                }
-
                 setIsAdmin(false);
                 const userDocRef = db.doc(`artifacts/${appId}/public/data/users/${firebaseUser.uid}`);
                 profileUnsubscribe = userDocRef.onSnapshot(async (docSnap) => {
@@ -1356,7 +1362,7 @@ const App: React.FC = () => {
                     setAppStatus('unauthenticated');
                 });
             } else {
-                sessionStorage.removeItem('schoolmaps_verification_skipped');
+                sessionStorage.removeItem('studybox_verification_skipped');
                 setVerificationSkipped(false);
                 setUser(null);
                 setIsAdmin(false);
@@ -1373,7 +1379,7 @@ const App: React.FC = () => {
             authSubscriber();
             if (profileUnsubscribe) profileUnsubscribe();
         };
-    }, [showAppModal, t, verificationSkipped]);
+    }, [showAppModal, t]);
 
     // Effect to sync user preferences to app state
     useEffect(() => {
@@ -1411,7 +1417,7 @@ const App: React.FC = () => {
     
     useEffect(() => {
         try {
-            const introSeen = localStorage.getItem('schoolmaps_intro_seen');
+            const introSeen = localStorage.getItem('studybox_intro_seen');
             if (introSeen !== 'true') {
                 setShowIntro(true);
             }
@@ -1429,7 +1435,7 @@ const App: React.FC = () => {
 
     const authContainerClasses = (appStatus === 'unauthenticated' || appStatus === 'initializing' || appStatus === 'awaiting-verification' || (showIntro && !user) ) ? getAuthThemeClasses('bg') : '';
 
-    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions, addCalendarEvent: addCalendarEventFromAI, removeCalendarEvent: removeCalendarEventFromAI };
+    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions, addCalendarEvent: addCalendarEventFromAI, removeCalendarEvent: removeCalendarEventFromAI, currentTime };
     
     const isLoading = !isAppReadyForDisplay || !isMinLoadingTimePassed;
 

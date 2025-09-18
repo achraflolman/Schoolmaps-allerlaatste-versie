@@ -55,21 +55,33 @@ const TodaysAgenda: React.FC<{
     t: (key: string) => string;
     getThemeClasses: (variant: string) => string;
     onNavigate: () => void;
-}> = ({ events, t, getThemeClasses, onNavigate }) => {
+    currentTime: Date;
+}> = ({ events, t, getThemeClasses, onNavigate, currentTime }) => {
+    const isEventInProgress = (event: CalendarEvent): boolean => {
+        const start = (event.start as any).toDate();
+        const end = (event.end as any).toDate();
+        return currentTime >= start && currentTime < end;
+    };
+
     return (
         <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-lg">
             <h3 className="text-xl font-bold mb-4">{t('todays_agenda_title')}</h3>
             {events.length === 0 ? (
                 <p className="text-center text-gray-500 italic py-4">{t('no_events_today')}</p>
             ) : (
-                <ul className="space-y-3">
+                <ul className="space-y-3 max-h-60 overflow-y-auto">
                     {events.map(event => (
                         <li key={event.id} className="flex items-center gap-3">
                             <div className={`w-1.5 h-10 rounded-full ${event.isSynced ? 'bg-yellow-400' : getThemeClasses('bg')}`}></div>
                             <div className="flex-grow">
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                     {event.isSynced && <Link size={12} className="text-gray-400"/>}
                                     <p className="font-semibold">{event.title}</p>
+                                    {isEventInProgress(event) && (
+                                        <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full animate-pulse">
+                                            {t('in_progress_badge')}
+                                        </span>
+                                    )}
                                 </div>
                                 <p className="text-sm text-gray-500">{(event.start as any).toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                             </div>
@@ -95,7 +107,7 @@ const RecentFiles: React.FC<{
             {files.length === 0 ? (
                 <p className="text-center text-gray-500 italic py-4">{t('no_recent_files')}</p>
             ) : (
-                <ul className="space-y-2">
+                <ul className="space-y-2 max-h-60 overflow-y-auto">
                     {files.map(file => (
                         <li key={file.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
                             <div className="flex items-center gap-3">
@@ -127,9 +139,10 @@ interface HomeViewProps {
   allUserFlashcardSets: FlashcardSet[];
   recentFiles: FileData[];
   setCurrentView: (view: string) => void;
+  currentTime: Date;
 }
 
-const HomeView: React.FC<HomeViewProps> = ({ user, t, getThemeClasses, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView }) => {
+const HomeView: React.FC<HomeViewProps> = ({ user, t, getThemeClasses, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView, currentTime }) => {
     const userFirstName = user.userName?.split(' ')[0] || '';
     const today = new Date();
 
@@ -175,7 +188,7 @@ const HomeView: React.FC<HomeViewProps> = ({ user, t, getThemeClasses, allEvents
     }, [allEvents]);
 
     const widgetComponents: { [key: string]: React.ReactNode } = {
-        agenda: <TodaysAgenda key="agenda" events={todaysEvents} t={t} getThemeClasses={getThemeClasses} onNavigate={() => setCurrentView('calendar')} />,
+        agenda: <TodaysAgenda key="agenda" events={todaysEvents} t={t} getThemeClasses={getThemeClasses} onNavigate={() => setCurrentView('calendar')} currentTime={currentTime} />,
         files: <RecentFiles key="files" files={recentFiles} t={t} />,
     };
 

@@ -25,6 +25,49 @@ const shuffleArray = (array: any[]) => {
     return array;
 };
 
+const AIGenerateCardsModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onGenerate: (text: string) => Promise<void>;
+    isGenerating: boolean;
+    getThemeClasses: (variant: string) => string;
+    t: (key: string) => string;
+}> = ({ isOpen, onClose, onGenerate, isGenerating, getThemeClasses, t }) => {
+    const [aiInput, setAiInput] = useState('');
+
+    if (!isOpen) return null;
+
+    const handleGenerateClick = () => {
+        onGenerate(aiInput).then(() => {
+            setAiInput('');
+            onClose();
+        });
+    };
+    
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 animate-fade-in p-4">
+            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg space-y-4 animate-scale-up" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-bold flex items-center gap-2"><Sparkles className="text-purple-500"/> {t('flashcard_ai_modal_title')}</h3>
+                <p className="text-sm text-gray-600">{t('flashcard_ai_modal_desc')}</p>
+                <textarea
+                    value={aiInput}
+                    onChange={(e) => setAiInput(e.target.value)}
+                    rows={8}
+                    className="w-full p-2 border rounded-lg"
+                    placeholder={t('flashcard_ai_placeholder')}
+                    disabled={isGenerating}
+                />
+                <div className="flex justify-end gap-2">
+                    <button type="button" onClick={onClose} className="py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">{t('cancel_button')}</button>
+                    <button onClick={handleGenerateClick} disabled={isGenerating || !aiInput.trim()} className={`py-2 px-4 rounded-lg text-white font-bold bg-purple-500 hover:bg-purple-600 w-48 flex justify-center items-center disabled:opacity-50`}>
+                        {isGenerating ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> {t('generating')}</> : t('generate_button')}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- Main Router Component ---
 const FlashcardsView: React.FC<FlashcardsViewProps> = (props) => {
   const [view, setView] = useState<ViewType>('set-list');
@@ -302,27 +345,51 @@ const CardManagerView = ({ onBack, set: currentSet, ...props }: any) => {
     const [editableCards, setEditableCards] = useState<(Flashcard & { isNew?: boolean })[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [aiInput, setAiInput] = useState('');
+    const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
     useEffect(() => {
         setIsLoading(true);
-        const q = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', currentSet.id).orderBy('createdAt');
+        const q = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', currentSet.id);
         const unsubscribe = q.onSnapshot(snapshot => {
-            setEditableCards(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Flashcard)));
+            const cards = snapshot.docs.map(d => ({id: d.id, ...d.data()} as Flashcard));
+            cards.sort((a, b) => (a.createdAt as any).toMillis() - (b.createdAt as any).toMillis());
+            
+            if (snapshot.empty) {
+                const newRows = Array.from({ length: 5 }, (_, i) => ({
+                    id: `new_${Date.now() + i}`,
+                    setId: currentSet.id,
+                    question: '',
+                    answer: '',
+                    isNew: true,
+                    ownerId: userId,
+                    createdAt: Timestamp.now(),
+                    dueDate: Timestamp.now(),
+                    interval: 0,
+                    easeFactor: 2.5
+                }));
+                setEditableCards(newRows);
+            } else {
+                setEditableCards(cards);
+            }
+            
             setIsLoading(false);
         }, (error) => {
+            console.error("Failed to load cards for management:", error);
             showAppModal({text: t('error_failed_to_load_cards')});
             setIsLoading(false);
         });
         return () => unsubscribe();
-    }, [currentSet.id, showAppModal, t]);
+    }, [currentSet.id, showAppModal, t, userId]);
     
-    const handleGenerateWithAI = async () => {
-        if (!aiInput.trim()) return;
+    const handleGenerateWithAI = async (textToParse: string) => {
+        if (!process.env.API_KEY) {
+            return showAppModal({ text: t('error_missing_api_key') });
+        }
+        if (!textToParse.trim()) return;
         setIsGenerating(true);
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const prompt = `Parse the following text into flashcards. Each line or item separated by a colon (:) or dash (-) should be a card. The part before the separator is the question, and the part after is the answer. Text: \n\n${aiInput}`;
+            const prompt = `Parse the following text into flashcards. Each line or item separated by a colon (:) or dash (-) should be a card. The part before the separator is the question, and the part after is the answer. Text: \n\n${textToParse}`;
             
             const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash',
@@ -346,7 +413,6 @@ const CardManagerView = ({ onBack, set: currentSet, ...props }: any) => {
             const jsonStr = response.text.trim();
             const newCards = JSON.parse(jsonStr).map((c: any) => ({ ...c, id: `new_${Math.random()}`, setId: currentSet.id, isNew: true, ownerId: userId, createdAt: Timestamp.now() }));
             setEditableCards(prev => [...prev, ...newCards]);
-            setAiInput('');
         } catch (error) {
             console.error(error);
             showAppModal({ text: t('error_ai_parse_failed') });
@@ -419,22 +485,25 @@ const CardManagerView = ({ onBack, set: currentSet, ...props }: any) => {
 
      return (
         <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4`}>
+            <AIGenerateCardsModal 
+                isOpen={isAiModalOpen}
+                onClose={() => setIsAiModalOpen(false)}
+                onGenerate={handleGenerateWithAI}
+                isGenerating={isGenerating}
+                getThemeClasses={getThemeClasses}
+                t={t}
+            />
             <div className="flex justify-between items-center">
                 <button onClick={onBack} className="font-semibold flex items-center gap-1 hover:underline"><ArrowLeft size={16}/> {t('back_to_sets')}</button>
                 <h3 className="font-bold text-lg text-center">{t('add_flashcard')} - {currentSet.name}</h3>
-                <div/>
-            </div>
-
-            {!currentSet.isShared && (
-                <div className="bg-white p-3 rounded-lg shadow-sm space-y-2">
-                    <h4 className="font-semibold flex items-center gap-2"><Sparkles className="text-purple-500"/> {t('ai_generate_cards_title')}</h4>
-                    <p className="text-xs text-gray-500">{t('ai_generate_cards_desc')}</p>
-                    <textarea value={aiInput} onChange={e => setAiInput(e.target.value)} rows={4} className="w-full p-2 border rounded-md" placeholder="Begrip 1: Uitleg 1&#10;Term 2 - Definition 2" />
-                    <button onClick={handleGenerateWithAI} disabled={isGenerating} className={`w-full flex justify-center items-center gap-2 text-white font-bold py-2 px-4 rounded-lg bg-purple-500 hover:bg-purple-600 active:scale-95 disabled:opacity-70`}>
-                        {isGenerating ? <><Loader2 className="animate-spin w-5 h-5"/> {t('generating')}</> : t('ai_generate_button')}
-                    </button>
+                <div>
+                    {!currentSet.isShared && (
+                        <button onClick={() => setIsAiModalOpen(true)} className="p-2 rounded-full text-purple-600 bg-purple-100 hover:bg-purple-200 transition-colors" title={t('flashcard_ai_modal_title')}>
+                            <Sparkles size={20}/>
+                        </button>
+                    )}
                 </div>
-            )}
+            </div>
             
             {isLoading ? <div className="text-center p-4"><Loader2 className="animate-spin"/></div> : (
                 <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2">
@@ -521,18 +590,28 @@ const LearnSessionView = ({ set: currentSet, onSessionComplete, ...props}: any) 
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        setIsLoading(true);
+        // FIX: Query only by setId and perform filtering/sorting/limiting on the client
+        // to avoid complex Firestore index requirements that can cause loading errors.
         const q = db.collection(`artifacts/${appId}/public/data/flashcards`)
-            .where('setId', '==', currentSet.id)
-            .where('dueDate', '<=', Timestamp.now())
-            .orderBy('dueDate')
-            .limit(20);
+            .where('setId', '==', currentSet.id);
+        
         const unsubscribe = q.onSnapshot(snapshot => {
-            const fetchedCards = shuffleArray(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Flashcard)));
+            const allCardsForSet = snapshot.docs.map(d => ({id: d.id, ...d.data()} as Flashcard));
+            
+            const now = new Date();
+            const dueForLearning = allCardsForSet
+                .filter(card => card.dueDate && card.dueDate.toDate() <= now)
+                .sort((a, b) => (a.dueDate as any).toMillis() - (b.dueDate as any).toMillis())
+                .slice(0, 20);
+
+            const fetchedCards = shuffleArray(dueForLearning);
             setDueCards(fetchedCards);
             setSessionQueue(fetchedCards);
             setStats({ correct: 0, incorrect: 0, total: fetchedCards.length });
             setIsLoading(false);
         }, (error) => {
+            console.error("Failed to load cards for learning session:", error);
             showAppModal({text: t('error_failed_to_load_cards')});
             setIsLoading(false);
         });

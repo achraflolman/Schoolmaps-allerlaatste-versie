@@ -20,7 +20,7 @@ const InfoView: React.FC<InfoViewProps> = ({ t, getThemeClasses, setCurrentView 
       <div className={`p-6 rounded-lg ${getThemeClasses('bg-light')} space-y-6 text-gray-700`}>
         <div>
             <h3 className={`font-bold text-xl mb-2 ${getThemeClasses('text')}`}>Onze Missie</h3>
-            <p>Schoolmaps is ontworpen als jouw ultieme partner voor het organiseren van je schoolleven. Ons doel is om alle tools die je nodig hebt voor succes op één centrale, intuïtieve en motiverende plek aan te bieden, zodat jij je kunt focussen op wat echt telt: leren en groeien.</p>
+            <p>StudyBox is ontworpen als jouw ultieme partner voor het organiseren van je schoolleven. Ons doel is om alle tools die je nodig hebt voor succes op één centrale, intuïtieve en motiverende plek aan te bieden, zodat jij je kunt focussen op wat echt telt: leren en groeien.</p>
         </div>
         <div>
             <h3 className={`font-bold text-xl mb-2 ${getThemeClasses('text')}`}>Dashboard in één Oogopslag</h3>
@@ -44,7 +44,7 @@ const InfoView: React.FC<InfoViewProps> = ({ t, getThemeClasses, setCurrentView 
         </div>
         <div className="text-center mt-8 text-sm text-gray-500">
           <p>{t('version')} 1.3.0</p>
-          <p>&copy; 2025 Schoolmaps. {t('copyright')}</p>
+          <p>&copy; 2025 StudyBox. {t('copyright')}</p>
         </div>
       </div>
     </div>

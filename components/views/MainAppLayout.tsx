@@ -81,12 +81,15 @@ const MainAppLayout: React.FC<{
     setSelectedTaskForTimer: (t: ToDoTask | null) => void;
     addCalendarEvent: (eventData: Omit<CalendarEvent, 'id' | 'ownerId' | 'createdAt'>) => Promise<string>;
     removeCalendarEvent: (title: string, date: string) => Promise<string>;
+    // FIX: Add missing currentTime prop to fix type errors in HomeView and CalendarView.
+    currentTime: Date;
 }> = ({
     user, t, tSubject, getThemeClasses, showAppModal, copyTextToClipboard, setIsAvatarModalOpen,
     handleLogout, currentView, setCurrentView, currentSubject, setCurrentSubject, handleGoHome,
     subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions,
     language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, closeAppModal, notifications, unreadCount, showBroadcast,
-    focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, addCalendarEvent, removeCalendarEvent
+    focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, addCalendarEvent, removeCalendarEvent,
+    currentTime
 }) => {
     
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -109,17 +112,19 @@ const MainAppLayout: React.FC<{
         };
     }, [isSidebarOpen]);
 
-    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents: allEvents, allUserFiles, allUserNotes, allUserFlashcardSets };
+    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents: allEvents, allUserFiles, allUserNotes, allUserFlashcardSets, onProfileUpdate };
 
     const mainContent = (
         <div>
-            {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, tSubject, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView }} />}
+            {/* FIX: Pass `currentTime` prop to HomeView. */}
+            {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, tSubject, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView, currentTime }} />}
             {currentView === 'home' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
             
             {currentView === 'files' && !currentSubject && <SubjectSelectionView {...{ user, t, tSubject, getThemeClasses, setCurrentSubject }} />}
             {currentView === 'files' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
 
-            {currentView === 'calendar' && <CalendarView {...{ allEvents, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user, onProfileUpdate }} />}
+            {/* FIX: Pass `currentTime` prop to CalendarView. */}
+            {currentView === 'calendar' && <CalendarView {...{ allEvents, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user, onProfileUpdate, currentTime }} />}
             {currentView === 'planner' && <StudyPlannerView {...{ userStudyPlans, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user, allEvents }} />}
             {currentView === 'tools' && <ToolsView {...toolsViewProps} />}
             {currentView === 'settings' && <SettingsView {...{ user, t, getThemeClasses, language, setLanguage, themeColor, setThemeColor, showAppModal, tSubject, setCurrentView, onProfileUpdate, fontFamily, setFontFamily, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, setIsAvatarModalOpen }} />}
@@ -140,7 +145,7 @@ const MainAppLayout: React.FC<{
                             <Menu className="w-6 h-6" />
                         </button>
                          <h1 onClick={handleGoHome} className={`text-xl sm:text-2xl font-bold ${getThemeClasses('text-logo')} cursor-pointer transition-transform hover:scale-105 active:scale-100`}>
-                            Schoolmaps
+                            StudyBox
                          </h1>
                         <div className="flex items-center gap-2">
                            {isTimerActive && (
@@ -191,6 +196,7 @@ const MainAppLayout: React.FC<{
                     tSubject={tSubject}
                     userEvents={allEvents}
                     onProfileUpdate={onProfileUpdate}
+                    userStudyPlans={userStudyPlans}
                 />
             )}
         </div>

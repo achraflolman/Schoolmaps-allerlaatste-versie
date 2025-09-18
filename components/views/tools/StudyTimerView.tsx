@@ -1,10 +1,7 @@
-
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Play, Pause, RefreshCw, CheckCircle, Loader2 } from 'lucide-react';
 import type { AppUser, ModalContent, ToDoTask } from '../../../types';
 import { db, appId } from '../../../services/firebase';
-
 
 interface StudyTimerViewProps {
   t: (key: string, replacements?: any) => string;
@@ -27,12 +24,13 @@ interface StudyTimerViewProps {
   setSelectedTaskForTimer: (t: ToDoTask | null) => void;
 }
 
-const StudyTimerView: React.FC<StudyTimerViewProps> = ({ 
+const StudyTimerView: React.FC<StudyTimerViewProps> = (props) => {
+  const { 
     t, getThemeClasses, showAppModal, user, userId,
-    focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode,
+    focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode,
     timeLeft, setTimeLeft, isTimerActive, setIsTimerActive,
     selectedTaskForTimer, setSelectedTaskForTimer
-}) => {
+  } = props;
 
   const [tasks, setTasks] = useState<ToDoTask[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);

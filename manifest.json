@@ -1,6 +1,6 @@
 {
-  "name": "Schoolmaps Pro",
-  "short_name": "Schoolmaps",
+  "name": "StudyBox",
+  "short_name": "StudyBox",
   "description": "An all-in-one student dashboard to organize files, manage your calendar, create flashcards, track study time, and stay on top of your schoolwork.",
   "start_url": "/",
   "display": "standalone",

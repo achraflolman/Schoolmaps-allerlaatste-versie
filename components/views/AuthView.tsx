@@ -187,6 +187,8 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
       try {
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
         if (userCredential.user.email !== 'admin1069@gmail.com' && !userCredential.user.emailVerified) {
+            // This block is now effectively skipped by the logic in App.tsx
+            // But we keep it as a safeguard.
             await auth.signOut();
             showAppModal({ text: t('error_email_not_verified') });
             setIsSubmitting(false);
@@ -234,7 +236,7 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
 
   const renderRegisterForm = () => (
     <form onSubmit={handleAuthAction} className="space-y-5">
-        <StepIndicator count={5} current={step} getThemeClasses={getThemeClasses} />
+        
         {step === 1 && (
             <div className="space-y-5 animate-fade-in">
                 <FormInput name="regName" label={t('your_name')} type="text" value={formData.regName} onChange={handleInputChange} placeholder={t('placeholder_name')} disabled={isSubmitting} getThemeClasses={getThemeClasses}/>
@@ -299,6 +301,7 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
                 />
             </div>
         )}
+        <StepIndicator count={5} current={step} getThemeClasses={getThemeClasses} />
         <div className="pt-2 flex justify-between items-center space-x-2">
             {step > 1 && <button type="button" onClick={prevStep} disabled={isSubmitting} className="font-semibold py-3 px-4 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition-all duration-200">{t('back_button')}</button>}
             {step < 5 ? (

@@ -1,10 +1,7 @@
-
-
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { db, appId, Timestamp, arrayUnion } from '../../services/firebase';
 import type { AppUser, ModalContent, BroadcastData, Feedback, AdminSettings } from '../../types';
-import { LogOut, Send, Users, Activity, RefreshCw, UserCheck, UserX, Search, MessageCircle, Trash2, Award, Settings, ShieldCheck, ShieldX } from 'lucide-react';
+import { LogOut, Send, Users, Activity, RefreshCw, UserCheck, UserX, Search, MessageCircle, Trash2, Award, Settings, ShieldCheck, ShieldX, MailCheck } from 'lucide-react';
 import AdminSettingsView from './admin/AdminSettingsView';
 
 interface AdminViewProps {
@@ -123,6 +120,23 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
         });
     };
     
+    const handleVerifyUser = async (targetUser: AppUser) => {
+        showAppModal({
+            text: t('confirm_verify_user', { name: targetUser.userName }),
+            confirmAction: async () => {
+                try {
+                    const userDocRef = db.doc(`artifacts/${appId}/public/data/users/${targetUser.uid}`);
+                    await userDocRef.update({ isVerifiedByEmail: true });
+                    showAppModal({ text: t('user_verified_success') });
+                    fetchAllData('users'); // Refresh the user list
+                } catch (error) {
+                    showAppModal({ text: t('error_user_verify_failed') });
+                }
+            },
+            cancelAction: () => {}
+        });
+    };
+
     const handleDeleteAllBroadcasts = async () => {
         showAppModal({
             text: t('confirm_delete_all_broadcasts_and_notifications'),
@@ -239,7 +253,7 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
                             </div>
                             <div className="overflow-x-auto max-h-[65vh]">
                                 <table className="w-full text-sm text-left text-gray-500"><thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" className="px-4 py-3">Name</th><th scope="col" className="px-4 py-3">Email</th><th scope="col" className="px-4 py-3">{t('last_login')}</th><th scope="col" className="px-4 py-3">{t('status')}</th><th scope="col" className="px-4 py-3">Verified</th><th scope="col" className="px-4 py-3">{t('actions')}</th></tr></thead><tbody>
-                                    {displayedUsers.map(u => (<tr key={u.uid} onClick={() => onUserClick(u)} className="bg-white border-b hover:bg-gray-50 cursor-pointer"><td className="px-4 py-4 font-medium text-gray-900 whitespace-nowrap">{u.userName}</td><td className="px-4 py-4">{u.email}</td><td className="px-4 py-4">{(u.lastLoginDate as any)?.toDate().toLocaleDateString() || 'N/A'}</td><td className="px-4 py-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${u.disabled ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>{u.disabled ? t('disabled') : t('active')}</span></td><td className="px-4 py-4 text-center">{u.isVerifiedByEmail ? <ShieldCheck className="w-5 h-5 text-green-500" /> : <ShieldX className="w-5 h-5 text-red-500" />}</td><td className="px-4 py-4"><button onClick={(e) => { e.stopPropagation(); handleToggleUserStatus(u); }} title={u.disabled ? t('enable_user') : t('disable_user')} className={`p-2 rounded-lg transition-colors active:scale-90 ${u.disabled ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}>{u.disabled ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}</button></td></tr>))}</tbody></table>
+                                    {displayedUsers.map(u => (<tr key={u.uid} onClick={() => onUserClick(u)} className="bg-white border-b hover:bg-gray-50 cursor-pointer"><td className="px-4 py-4 font-medium text-gray-900 whitespace-nowrap">{u.userName}</td><td className="px-4 py-4">{u.email}</td><td className="px-4 py-4">{(u.lastLoginDate as any)?.toDate().toLocaleDateString() || 'N/A'}</td><td className="px-4 py-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${u.disabled ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>{u.disabled ? t('disabled') : t('active')}</span></td><td className="px-4 py-4 text-center">{u.isVerifiedByEmail ? <ShieldCheck className="w-5 h-5 text-green-500" /> : <ShieldX className="w-5 h-5 text-red-500" />}</td><td className="px-4 py-4"><div className="flex items-center gap-2"><button onClick={(e) => { e.stopPropagation(); handleToggleUserStatus(u); }} title={u.disabled ? t('enable_user') : t('disable_user')} className={`p-2 rounded-lg transition-colors active:scale-90 ${u.disabled ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}>{u.disabled ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}</button>{!u.isVerifiedByEmail && (<button onClick={(e) => { e.stopPropagation(); handleVerifyUser(u); }} title={t('verify_user_button')} className="p-2 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors active:scale-90"><MailCheck className="w-4 h-4" /></button>)}</div></td></tr>))}</tbody></table>
                             </div>
                         </div>
                         <div className="lg:col-span-1 bg-white p-6 rounded-lg shadow-md">

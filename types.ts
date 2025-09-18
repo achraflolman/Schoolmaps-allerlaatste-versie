@@ -117,6 +117,8 @@ export interface ToDoTask {
     createdAt: FirebaseTimestamp;
     completedAt?: FirebaseTimestamp;
     reminderAt?: FirebaseTimestamp;
+    dueDate?: FirebaseTimestamp;
+    recurring?: 'daily' | null;
 }
 
 export interface AdminSettings {
