@@ -1,7 +1,9 @@
-import React, { useState, useMemo } from 'react';
+
+
+import React, { useState, useMemo, useEffect } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { db, appId, Timestamp } from '../../services/firebase';
-import { ClipboardList, Loader2, PlusCircle, Trash2, Calendar, Clock, CheckSquare, Lightbulb, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
+import { ClipboardList, Loader2, PlusCircle, Trash2, Calendar, Clock, CheckSquare, Lightbulb, ChevronDown, ChevronUp, Check, X, Share2, Layers } from 'lucide-react';
 import type { AppUser, ModalContent, StudyPlan, StudyPlanSubject, CalendarEvent } from '../../types';
 
 interface StudyPlannerViewProps {
@@ -17,6 +19,86 @@ interface StudyPlannerViewProps {
 }
 
 const COLORS = ['#10b981', '#3b82f6', '#ec4899', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6', '#6366f1'];
+
+const SharePlanModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    plan: StudyPlan;
+    user: AppUser;
+    t: (key: string, replacements?: any) => string;
+    getThemeClasses: (variant: string) => string;
+    showAppModal: (content: { text: string }) => void;
+}> = ({ isOpen, onClose, plan, user, t, getThemeClasses, showAppModal }) => {
+    const [email, setEmail] = useState('');
+    const [isSharing, setIsSharing] = useState(false);
+
+    const handleShare = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email)) {
+            showAppModal({ text: t('error_invalid_email') });
+            return;
+        }
+        if (email.toLowerCase() === user.email.toLowerCase()) {
+            showAppModal({ text: t('error_cannot_share_with_self') });
+            return;
+        }
+
+        setIsSharing(true);
+        try {
+            const usersRef = db.collection(`artifacts/${appId}/public/data/users`);
+            const userQuery = await usersRef.where('email', '==', email.toLowerCase()).limit(1).get();
+
+            if (userQuery.empty) {
+                showAppModal({ text: t('error_user_not_found', { email }) });
+                return;
+            }
+            const recipientUser = userQuery.docs[0].data() as AppUser;
+            
+            // Denormalize by copying plan data for easy retrieval by recipient
+            const planDataToShare = {
+                ...plan,
+                sharerId: user.uid,
+                sharerName: user.userName,
+                recipientEmail: recipientUser.email,
+                originalPlanId: plan.id,
+                sharedAt: Timestamp.now(),
+            };
+            delete (planDataToShare as any).id; // Remove original ID
+
+            await db.collection(`artifacts/${appId}/public/data/sharedPlans`).add(planDataToShare);
+
+            showAppModal({ text: t('share_plan_success', { email }) });
+            onClose();
+
+        } catch (error) {
+            console.error("Sharing failed:", error);
+            showAppModal({ text: t('error_share_plan_failed') });
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 animate-fade-in" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-scale-up" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-bold mb-2 truncate">{t('share_plan_title', { title: plan.title })}</h3>
+                <form onSubmit={handleShare}>
+                    <label className="block text-gray-700 text-sm font-bold mb-2">{t('share_with_email')}</label>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('placeholder_email')} className={`w-full p-2 border rounded-lg border-gray-300`} required />
+                    <div className="flex justify-end gap-2 mt-4">
+                        <button type="button" onClick={onClose} className="py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">{t('cancel_button')}</button>
+                        <button type="submit" disabled={isSharing} className={`py-2 px-4 rounded-lg text-white font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} w-32 flex items-center justify-center`}>
+                            {isSharing ? <Loader2 className="w-5 h-5 animate-spin"/> : <><Share2 size={16} className="mr-2"/>{t('share_button')}</>}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
 
 const CreatePlanView: React.FC<Omit<StudyPlannerViewProps, 'userStudyPlans'> & { onPlanCreated: () => void, onCancel: () => void }> = (props) => {
     const { user, userId, t, tSubject, getThemeClasses, showAppModal, language, onPlanCreated, onCancel, allEvents } = props;
@@ -231,21 +313,57 @@ Return the output as a JSON object. The root object must have a key "schedule" w
 };
 
 const StudyPlannerView: React.FC<StudyPlannerViewProps> = (props) => {
-    const { userId, userStudyPlans, t, showAppModal, getThemeClasses, tSubject, language } = props;
+    const { user, userId, userStudyPlans, t, showAppModal, getThemeClasses, tSubject, language } = props;
     const [isCreating, setIsCreating] = useState(false);
     const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
     const [isSelecting, setIsSelecting] = useState(false);
     const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [planToShare, setPlanToShare] = useState<StudyPlan | null>(null);
+    const [sharedPlans, setSharedPlans] = useState<StudyPlan[]>([]);
+    
+    useEffect(() => {
+        const q = db.collection(`artifacts/${appId}/public/data/sharedPlans`).where('recipientEmail', '==', user.email);
+        const unsubscribe = q.onSnapshot(snapshot => {
+            const fetchedPlans = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    ...data,
+                    id: doc.id,
+                    isShared: true,
+                    sharerName: data.sharerName,
+                    testDate: data.testDate,
+                    createdAt: data.createdAt,
+                } as StudyPlan
+            });
+            setSharedPlans(fetchedPlans);
+        });
+        return () => unsubscribe();
+    }, [user.email]);
 
-    const handleDeletePlan = (planId: string) => {
+    const allPlans = useMemo(() => {
+        return [...userStudyPlans, ...sharedPlans].sort((a,b) => (b.createdAt as any).toMillis() - (a.createdAt as any).toMillis());
+    }, [userStudyPlans, sharedPlans]);
+
+    const handleDeletePlan = (plan: StudyPlan) => {
+        const isOwned = !plan.isShared;
         showAppModal({
             text: t('delete_plan_confirm'),
             confirmAction: async () => {
-                await db.doc(`artifacts/${appId}/users/${userId}/studyPlans/${planId}`).delete();
+                if (isOwned) {
+                    await db.doc(`artifacts/${appId}/users/${userId}/studyPlans/${plan.id}`).delete();
+                } else {
+                    await db.doc(`artifacts/${appId}/public/data/sharedPlans/${plan.id}`).delete();
+                }
                 showAppModal({ text: t('plan_deleted_success') });
             },
             cancelAction: () => {}
         });
+    };
+    
+    const openShareModal = (plan: StudyPlan) => {
+        setPlanToShare(plan);
+        setIsShareModalOpen(true);
     };
 
     const togglePlanSelection = (planId: string) => {
@@ -253,10 +371,10 @@ const StudyPlannerView: React.FC<StudyPlannerViewProps> = (props) => {
     };
 
     const toggleSelectAll = () => {
-        if (selectedPlanIds.length === userStudyPlans.length) {
+        if (selectedPlanIds.length === allPlans.length) {
             setSelectedPlanIds([]);
         } else {
-            setSelectedPlanIds(userStudyPlans.map(p => p.id));
+            setSelectedPlanIds(allPlans.map(p => p.id));
         }
     };
 
@@ -267,8 +385,13 @@ const StudyPlannerView: React.FC<StudyPlannerViewProps> = (props) => {
             confirmAction: async () => {
                 const batch = db.batch();
                 selectedPlanIds.forEach(planId => {
-                    const docRef = db.doc(`artifacts/${appId}/users/${userId}/studyPlans/${planId}`);
-                    batch.delete(docRef);
+                    const plan = allPlans.find(p => p.id === planId);
+                    if (plan) {
+                        const collection = plan.isShared ? 'sharedPlans' : 'studyPlans';
+                        const path = plan.isShared ? `artifacts/${appId}/public/data/${collection}/${planId}` : `artifacts/${appId}/users/${userId}/${collection}/${planId}`;
+                        const docRef = db.doc(path);
+                        batch.delete(docRef);
+                    }
                 });
                 await batch.commit();
                 showAppModal({ text: t('plan_deleted_success') });
@@ -281,31 +404,37 @@ const StudyPlannerView: React.FC<StudyPlannerViewProps> = (props) => {
 
     return (
         <div className="space-y-6">
+            {planToShare && <SharePlanModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} plan={planToShare} user={props.user} t={t} getThemeClasses={getThemeClasses} showAppModal={showAppModal} />}
+
             <div className="flex justify-between items-center flex-wrap gap-2">
                 <h2 className={`text-3xl font-bold ${getThemeClasses('text-strong')}`}>{t('study_planner_title')}</h2>
-                {isSelecting ? (
-                    <div className="flex items-center gap-2">
-                        <button onClick={toggleSelectAll} className="font-semibold text-sm py-2 px-3 rounded-lg bg-gray-200 hover:bg-gray-300">{t('select_all_button')}</button>
-                        <button onClick={handleDeleteSelected} disabled={selectedPlanIds.length === 0} className="font-semibold text-sm py-2 px-3 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 flex items-center gap-1"><Trash2 size={14}/> {t('delete_selected_button')} ({selectedPlanIds.length})</button>
-                        <button onClick={() => { setIsSelecting(false); setSelectedPlanIds([]); }} className="font-semibold text-sm py-2 px-3 rounded-lg bg-gray-200 hover:bg-gray-300">{t('cancel_button')}</button>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-2">
-                        {!isCreating && userStudyPlans.length > 0 && (
-                            <button onClick={() => setIsSelecting(true)} className={`font-semibold text-sm py-2 px-3 rounded-lg bg-gray-200 hover:bg-gray-300`}>{t('select_button')}</button>
-                        )}
-                        {!isCreating && (
-                            <button onClick={() => setIsCreating(true)} className={`flex items-center text-white font-bold py-2 px-4 rounded-lg shadow-md ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}>
-                                <PlusCircle className="w-5 h-5 mr-2"/> {t('create_new_plan')}
-                            </button>
-                        )}
-                    </div>
-                )}
+                 <div className="flex items-center gap-2">
+                    {isSelecting ? (
+                        <>
+                            <button onClick={toggleSelectAll} className="font-semibold text-sm py-2 px-3 rounded-lg bg-gray-200 hover:bg-gray-300">{t('select_all_button')}</button>
+                            <button onClick={handleDeleteSelected} disabled={selectedPlanIds.length === 0} className="font-semibold text-sm py-2 px-3 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 flex items-center gap-1"><Trash2 size={14}/> {t('delete_selected_button')} ({selectedPlanIds.length})</button>
+                            <button onClick={() => { setIsSelecting(false); setSelectedPlanIds([]); }} className="font-semibold text-sm py-2 px-3 rounded-lg bg-gray-200 hover:bg-gray-300">{t('cancel_button')}</button>
+                        </>
+                    ) : (
+                        <>
+                            {!isCreating && allPlans.length > 0 && (
+                                <button onClick={() => setIsSelecting(true)} className={`p-2 rounded-lg bg-gray-200 hover:bg-gray-300`} title={t('select_button')}>
+                                    <CheckSquare size={20} />
+                                </button>
+                            )}
+                            {!isCreating && (
+                                <button onClick={() => setIsCreating(true)} className={`flex items-center text-white font-bold p-2 rounded-lg shadow-md ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`} title={t('create_new_plan')}>
+                                    <PlusCircle size={20}/>
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
 
             {isCreating ? (
                 <CreatePlanView {...props} onPlanCreated={() => setIsCreating(false)} onCancel={() => setIsCreating(false)} />
-            ) : userStudyPlans.length === 0 ? (
+            ) : allPlans.length === 0 ? (
                 <div className="text-center py-16 text-gray-500">
                     <ClipboardList className="mx-auto h-20 w-20 text-gray-300" />
                     <h3 className="mt-4 text-xl font-semibold text-gray-700">{t('no_plans_yet')}</h3>
@@ -313,7 +442,7 @@ const StudyPlannerView: React.FC<StudyPlannerViewProps> = (props) => {
                 </div>
             ) : (
                 <div className="space-y-4">
-                    {userStudyPlans.map(plan => (
+                    {allPlans.map(plan => (
                         <div key={plan.id} className={`bg-white p-4 rounded-lg shadow-md transition-all ${isSelecting ? 'pl-2' : ''}`}>
                            <div className="flex items-start gap-2">
                                {isSelecting && (
@@ -330,13 +459,17 @@ const StudyPlannerView: React.FC<StudyPlannerViewProps> = (props) => {
                                     <div>
                                         <h3 className="font-bold text-lg">{plan.title}</h3>
                                         <p className="text-sm text-gray-500">{t('plan_for_date', { date: (plan.testDate as any).toDate().toLocaleDateString(language) })}</p>
+                                        {plan.isShared && <p className="text-xs text-gray-500 mt-1">{t('shared_by', { name: plan.sharerName })}</p>}
                                     </div>
                                     <div className="flex gap-2">
+                                        {!isSelecting && !plan.isShared &&
+                                            <button onClick={() => openShareModal(plan)} className="p-2 bg-blue-100 hover:bg-blue-200 rounded-md text-blue-600"><Share2 size={16}/></button>
+                                        }
                                         <button onClick={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)} className="p-2 bg-gray-200 hover:bg-gray-300 rounded-md">
                                             {expandedPlanId === plan.id ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
                                         </button>
                                         {!isSelecting && (
-                                            <button onClick={() => handleDeletePlan(plan.id)} className="p-2 text-red-500 bg-red-100 hover:bg-red-200 rounded-md"><Trash2 size={16}/></button>
+                                            <button onClick={() => handleDeletePlan(plan)} className="p-2 text-red-500 bg-red-100 hover:bg-red-200 rounded-md"><Trash2 size={16}/></button>
                                         )}
                                     </div>
                                </div>

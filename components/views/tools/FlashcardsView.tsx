@@ -1,11 +1,8 @@
-
-
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { db, appId, Timestamp, increment } from '../../../services/firebase';
 import { GoogleGenAI, Type } from '@google/genai';
 import type { Flashcard, FlashcardSet, AppUser, ModalContent, SessionSummary, SessionAnswer } from '../../../types';
-import { PlusCircle, Trash2, ArrowLeft, Save, BookOpen, Settings, Brain, BarChart, RotateCcw, X, Check, Loader2, FileQuestion, Star, Layers, Sparkles, Share2, ChevronDown, Folder, Type as TypeIcon, Globe, Calculator, Atom, FlaskConical, Dna, ScrollText, AreaChart, Users, Languages, Code, Paintbrush, Music, Dumbbell, Film } from 'lucide-react';
+import { PlusCircle, Trash2, ArrowLeft, Save, BookOpen, Settings, Brain, BarChart, RotateCcw, X, Check, Loader2, FileQuestion, Star, Layers, Sparkles, Share2, ChevronDown, Folder, Type as TypeIcon, Globe, Calculator, Atom, FlaskConical, Dna, ScrollText, AreaChart, Users, Languages, Code, Paintbrush, Music, Dumbbell, Film, CheckCircle, Send } from 'lucide-react';
 import ShareSetModal from './ShareSetModal';
 
 interface FlashcardsViewProps {
@@ -17,6 +14,7 @@ interface FlashcardsViewProps {
   showAppModal: (content: ModalContent) => void;
   onProfileUpdate: (updatedData: Partial<AppUser>) => Promise<void>;
   setIsSessionActive?: (isActive: boolean) => void;
+  initialContext?: { set: FlashcardSet };
 }
 
 type ViewType = 'subject-list' | 'set-list' | 'mode-selection' | 'manage' | 'learn' | 'cram' | 'mc' | 'vocab' | 'summary' | 'all-learned';
@@ -27,6 +25,318 @@ const shuffleArray = (array: any[]) => {
         [array[i], array[j]] = [array[j], array[i]];
     }
     return array;
+};
+
+const calculateStars = (correct: number, total: number): number => {
+    if (total === 0) return 0;
+    const percentage = correct / total;
+    if (percentage === 1) return 5;
+    if (percentage >= 0.8) return 3;
+    if (percentage >= 0.6) return 1;
+    return 0;
+};
+
+const StudyCardLayout: React.FC<{
+    card: Flashcard;
+    isFlipped: boolean;
+    setIsFlipped: (flipped: boolean) => void;
+    progressPercentage: number;
+    set: FlashcardSet;
+    onExit: () => void;
+    t: (key: string, replacements?: any) => string;
+    getThemeClasses: (variant: string) => string;
+    cardsRemainingText: string;
+    children: React.ReactNode;
+}> = ({ card, isFlipped, setIsFlipped, progressPercentage, set, onExit, t, getThemeClasses, cardsRemainingText, children }) => {
+    return (
+        <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} flex flex-col items-center space-y-4`} style={{ minHeight: '70vh' }}>
+            <style>{`.backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }`}</style>
+            
+            <div className="w-full max-w-lg">
+                <div className="w-full flex justify-between items-center mb-2">
+                     <h3 className="font-bold text-xl text-center flex-grow truncate">{set.name}</h3>
+                    <button onClick={onExit} className="p-2 rounded-full hover:bg-gray-200 transition-colors flex-shrink-0"><X/></button>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
+                    <div className={`${getThemeClasses('bg')} h-2.5 rounded-full transition-all duration-300`} style={{ width: `${progressPercentage}%` }}></div>
+                </div>
+                <div className="font-semibold text-sm text-center text-gray-600">{cardsRemainingText}</div>
+            </div>
+            
+            <div className="w-full max-w-lg flex-grow flex flex-col justify-center items-center">
+                <div 
+                    className={`relative w-full aspect-[2/1] cursor-pointer transition-transform duration-300`} 
+                    style={{ transformStyle: 'preserve-3d', transform: isFlipped ? 'rotateY(180deg)' : '' }}
+                    onClick={() => setIsFlipped(!isFlipped)}
+                >
+                    <div className="absolute inset-0 bg-white rounded-xl shadow-lg flex items-center justify-center p-6 text-center text-xl font-semibold backface-hidden">
+                        {card?.question}
+                    </div>
+                    <div className="absolute inset-0 bg-white rounded-xl shadow-lg flex items-center justify-center p-6 text-center text-lg text-gray-700 backface-hidden" style={{ transform: 'rotateY(180deg)'}}>
+                        {card?.answer}
+                    </div>
+                </div>
+            </div>
+            
+            <div className="w-full max-w-lg">
+                {children}
+            </div>
+        </div>
+    );
+};
+
+const NoCardsFoundView: React.FC<any> = ({ setView, t, getThemeClasses }) => (
+    <div className="text-center p-8">
+        <h3 className="text-xl font-bold">{t('no_flashcards_found')}</h3>
+        <p className="text-gray-600 my-4">{t('add_cards_to_start', { default: "Add some cards to this set to start studying!"})}</p>
+        <button onClick={() => setView('manage')} className={`py-2 px-4 rounded-lg text-white font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}>
+            {t('manage_cards')}
+        </button>
+    </div>
+);
+
+const AllCardsLearnedView: React.FC<any> = ({ set, setView, t, getThemeClasses }) => (
+    <div className={`p-8 rounded-lg shadow-inner ${getThemeClasses('bg-light')} text-center`}>
+        <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+        <h3 className="text-2xl font-bold">{t('all_cards_learned_title')}</h3>
+        <p className="text-gray-600 my-4">{t('all_cards_learned_desc')}</p>
+        <div className="flex justify-center gap-4">
+            <button onClick={() => setView('mode-selection')} className="py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">{t('choose_other_method_button')}</button>
+            <button onClick={() => setView('learn')} className={`py-2 px-4 rounded-lg text-white font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}>{t('reset_and_start_over_button')}</button>
+        </div>
+    </div>
+);
+
+const SessionSummaryView: React.FC<any> = ({ set, summary, setView, onBack, onStartSession, setSelectedSet, ...props }) => {
+    const { t, getThemeClasses, userId } = props;
+    const { stats, answers, earnedStars } = summary;
+    const incorrectAnswers = useMemo(() => answers.filter((a: SessionAnswer) => !a.isCorrect), [answers]);
+    
+    const formatDuration = (ms: number) => {
+        const totalSeconds = Math.round(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+        const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+        return `${minutes}:${seconds}`;
+    };
+    const duration = formatDuration(stats.endTime - stats.startTime);
+
+
+    const handlePracticeIncorrect = () => {
+        if (incorrectAnswers.length === 0) return;
+        const incorrectCards = incorrectAnswers.map((a: SessionAnswer) => a.card);
+        const newSet: FlashcardSet = {
+            ...set,
+            id: `practice-${set.id}-${Date.now()}`,
+            name: `${set.name} - Incorrect`,
+            cardCount: incorrectCards.length,
+            isCombined: true,
+            cards: incorrectCards
+        };
+        setSelectedSet(newSet);
+        onStartSession('learn');
+    };
+    
+    const handleCreateSetFromIncorrect = async () => {
+        if (incorrectAnswers.length === 0) return;
+        const newSetName = prompt(t('new_set_name_prompt'), `${set.name} - Practice`);
+        if (!newSetName) return;
+
+        const batch = db.batch();
+        const setRef = db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks`).doc();
+        batch.set(setRef, {
+            name: newSetName,
+            subject: set.subject,
+            ownerId: userId,
+            createdAt: Timestamp.now(),
+            cardCount: incorrectAnswers.length
+        });
+        
+        incorrectAnswers.forEach((answer: SessionAnswer) => {
+            const cardRef = db.collection(`artifacts/${appId}/public/data/flashcards`).doc();
+            const cardData: Partial<Flashcard> = { ...answer.card };
+            delete cardData.id;
+            batch.set(cardRef, { ...cardData, setId: setRef.id });
+        });
+        
+        await batch.commit();
+        props.showAppModal({ text: t('new_set_created_success', { name: newSetName }) });
+    };
+
+    return (
+        <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4`}>
+            <div className="flex justify-between items-center">
+                <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-200 transition-colors"><ArrowLeft/></button>
+                <h3 className="font-bold text-xl">{t('session_summary_title')}</h3>
+                <div></div>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow-md text-center">
+                 {earnedStars > 0 && (
+                    <div className="mb-4">
+                        <h4 className="font-bold text-lg">{t('stars_earned_title')}</h4>
+                        <div className="flex justify-center items-center text-yellow-500">
+                            {[...Array(earnedStars)].map((_, i) => <Star key={i} className="w-8 h-8 fill-current" />)}
+                        </div>
+                    </div>
+                )}
+                <h4 className="font-bold text-lg">{t('your_score', { correct: stats.correct, total: stats.total })}</h4>
+                <div className="grid grid-cols-3 gap-4 mt-4">
+                    <div className="bg-green-100 p-3 rounded-lg"><p className="text-green-800 font-bold text-2xl">{stats.correct}</p><p className="text-sm">{t('correct_answers')}</p></div>
+                    <div className="bg-red-100 p-3 rounded-lg"><p className="text-red-800 font-bold text-2xl">{stats.incorrect}</p><p className="text-sm">{t('incorrect_answers')}</p></div>
+                    <div className="bg-blue-100 p-3 rounded-lg"><p className="text-blue-800 font-bold text-2xl">{duration}</p><p className="text-sm">{t('time_spent')}</p></div>
+                </div>
+            </div>
+            
+            {incorrectAnswers.length > 0 && (
+                <div className="bg-white p-4 rounded-lg shadow-md">
+                     <h4 className="font-bold mb-2">{t('practice_incorrect')}</h4>
+                     <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {incorrectAnswers.map((answer: SessionAnswer, index: number) => (
+                            <div key={index} className="p-2 bg-red-50 rounded-md">
+                                <p className="font-semibold text-sm">{answer.card.question}</p>
+                                {answer.userAnswer && <p className="text-xs text-red-700"><b>{t('your_answer')}:</b> {answer.userAnswer}</p>}
+                                <p className="text-xs text-green-700"><b>{t('correct_answer')}:</b> {answer.card.answer}</p>
+                            </div>
+                        ))}
+                     </div>
+                     <div className="flex gap-2 mt-4">
+                         <button onClick={handlePracticeIncorrect} className={`w-full py-2 px-4 rounded-lg text-white font-bold ${getThemeClasses('bg')}`}>{t('practice_incorrect')}</button>
+                         <button onClick={handleCreateSetFromIncorrect} className="w-full py-2 px-4 rounded-lg bg-gray-200 font-semibold">{t('create_set_from_incorrect')}</button>
+                     </div>
+                </div>
+            )}
+             <div className="flex flex-col sm:flex-row gap-2">
+                <button onClick={() => setView('mode-selection')} className="w-full py-2 px-4 rounded-lg bg-gray-200 font-bold">{t('choose_other_method_button')}</button>
+                <button onClick={() => onStartSession('learn')} className="w-full py-2 px-4 rounded-lg bg-white shadow-md font-bold">{t('study_again_button')}</button>
+             </div>
+        </div>
+    );
+};
+
+const congratulations = [ 'Correct!', 'Great job!', 'Awesome!', 'You got it!', 'Perfect!', 'Well done!' ];
+
+const VocabSessionView = ({ set: currentSet, onSessionComplete, onExit, ...props}: any) => {
+    const { t, getThemeClasses, showAppModal } = props;
+    const [allCards, setAllCards] = useState<Flashcard[]>([]);
+    const [sessionQueue, setSessionQueue] = useState<Flashcard[]>([]);
+    const [userAnswer, setUserAnswer] = useState('');
+    const [feedbackText, setFeedbackText] = useState<string | null>(null);
+    const [isChecking, setIsChecking] = useState(false);
+    const [sessionAnswers, setSessionAnswers] = useState<SessionAnswer[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [showNextButton, setShowNextButton] = useState(false);
+    const startTime = useRef(Date.now());
+    
+    const card = useMemo(() => sessionQueue[0], [sessionQueue]);
+
+    useEffect(() => {
+        const fetchCards = async () => {
+            let fetchedCards: Flashcard[];
+            if (currentSet.isCombined) {
+                fetchedCards = currentSet.cards;
+            } else {
+                const q = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', currentSet.id);
+                const snapshot = await q.get();
+                fetchedCards = snapshot.docs.map(d => ({id: d.id, ...d.data()} as Flashcard));
+            }
+             if (fetchedCards.length < 1) {
+                showAppModal({ text: t('error_vocab_set_min_cards') });
+                onExit();
+                return;
+            }
+            setAllCards(fetchedCards);
+            setSessionQueue(shuffleArray([...fetchedCards]));
+            setIsLoading(false);
+        };
+        fetchCards().catch(() => showAppModal({text: t('error_failed_to_load_cards')}));
+    }, [currentSet, showAppModal, t, onExit]);
+
+    const handleNext = () => {
+        setShowNextButton(false);
+        setFeedbackText(null);
+        setUserAnswer('');
+        if (sessionQueue.length === 1) {
+            const stats = { correct: sessionAnswers.filter(a=>a.isCorrect).length, incorrect: sessionAnswers.filter(a=>!a.isCorrect).length, total: sessionAnswers.length, startTime: startTime.current, endTime: Date.now() };
+            onSessionComplete({ stats, answers: sessionAnswers, earnedStars: calculateStars(stats.correct, stats.total) });
+        } else {
+            setSessionQueue(q => q.slice(1));
+        }
+    };
+
+    const handleAnswerSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!userAnswer.trim() || showNextButton) return;
+        
+        let isCorrect = userAnswer.trim().toLowerCase() === card.answer.trim().toLowerCase();
+        
+        if (!isCorrect && process.env.API_KEY) {
+            setIsChecking(true);
+            try {
+                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                const prompt = `The flashcard question is "${card.question}". The stored correct answer is "${card.answer}". First, extract the primary term(s) from the stored answer, ignoring any explanations in parentheses or after commas. Then, evaluate if the user's answer, "${userAnswer}", is a correct translation, a valid synonym, or matches one of the primary terms. Respond with only "YES" or "NO".`;
+                const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+                if (response.text.trim().toUpperCase() === 'YES') {
+                    isCorrect = true;
+                }
+            } catch (err) {
+                console.error(err);
+                showAppModal({text: t('error_ai_check_failed')});
+            } finally {
+                setIsChecking(false);
+            }
+        }
+        
+        setFeedbackText(isCorrect ? congratulations[Math.floor(Math.random() * congratulations.length)] : `${t('ai_feedback_incorrect', { correct_answer: card.answer })}`);
+        setSessionAnswers(prev => [...prev, { card, userAnswer, isCorrect }]);
+        setShowNextButton(true);
+    };
+    
+    if (isLoading) return <div className="text-center p-8 flex justify-center items-center gap-2"><Loader2 className="animate-spin" /> {t('loading_cards')}</div>;
+    const currentIndex = allCards.length - sessionQueue.length;
+    const progressPercentage = allCards.length > 0 ? (((currentIndex + 1) / allCards.length) * 100) : 0;
+
+    return (
+        <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} flex flex-col items-center space-y-4`} style={{ minHeight: '70vh' }}>
+             <div className="w-full max-w-lg">
+                <div className="w-full flex justify-between items-center mb-2">
+                     <h3 className="font-bold text-xl text-center flex-grow truncate">{currentSet.name}</h3>
+                    <button onClick={onExit} className="p-2 rounded-full hover:bg-gray-200 transition-colors flex-shrink-0"><X/></button>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
+                    <div className={`${getThemeClasses('bg')} h-2.5 rounded-full transition-all duration-300`} style={{ width: `${progressPercentage}%` }}></div>
+                </div>
+                <div className="font-semibold text-sm text-center text-gray-600">{t('cards_to_go_counter', { current: currentIndex + 1, total: allCards.length })}</div>
+            </div>
+
+            <div className="w-full max-w-lg flex-grow flex flex-col justify-center items-center">
+                <div className="w-full aspect-[2/1] bg-white rounded-xl shadow-lg flex items-center justify-center p-6 text-center text-xl font-semibold">
+                    {card?.question}
+                </div>
+            </div>
+            
+            <div className="w-full max-w-lg space-y-4">
+                 {!showNextButton ? (
+                    <form onSubmit={handleAnswerSubmit}>
+                        <div className="flex gap-2">
+                            <input type="text" value={userAnswer} onChange={e => setUserAnswer(e.target.value)} placeholder={t('your_answer')} className="w-full p-2 border rounded-lg h-12" disabled={isChecking}/>
+                            <button type="submit" disabled={!userAnswer.trim() || isChecking} className={`py-2 px-4 rounded-lg text-white font-bold ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} w-32 h-12 flex justify-center items-center`}>
+                            {isChecking ? <Loader2 className="animate-spin"/> : t('submit_answer')}
+                            </button>
+                        </div>
+                    </form>
+                 ) : null }
+                
+                {feedbackText && (
+                    <div className={`p-3 rounded-lg text-center font-bold animate-fade-in ${feedbackText.includes(t('ai_feedback_incorrect', {correct_answer: ''}).split(" ")[0]) ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                        {feedbackText}
+                    </div>
+                )}
+                
+                {showNextButton && (
+                     <button onClick={handleNext} className={`w-full text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-transform active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}>{t('next_card')}</button>
+                )}
+            </div>
+        </div>
+    );
 };
 
 const AIGenerateCardsModal: React.FC<{
@@ -81,12 +391,11 @@ const AIGenerateCardsModal: React.FC<{
     );
 };
 
-// --- Main Router Component ---
 const FlashcardsView: React.FC<FlashcardsViewProps> = (props) => {
-  const { setIsSessionActive } = props;
-  const [view, setView] = useState<ViewType>('subject-list');
-  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
-  const [selectedSet, setSelectedSet] = useState<FlashcardSet | null>(null);
+  const { setIsSessionActive, initialContext } = props;
+  const [view, setView] = useState<ViewType>(initialContext?.set ? 'mode-selection' : 'subject-list');
+  const [selectedSubject, setSelectedSubject] = useState<string | null>(initialContext?.set?.subject || null);
+  const [selectedSet, setSelectedSet] = useState<FlashcardSet | null>(initialContext?.set || null);
   const [lastSessionSummary, setLastSessionSummary] = useState<SessionSummary | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [setForSharing, setSetForSharing] = useState<FlashcardSet | null>(null);
@@ -248,7 +557,7 @@ const SetListView: React.FC<any> = ({ subject, setSelectedSet, setView, onBack, 
         if (!newSetName.trim()) { showAppModal({ text: t('error_empty_set_name') }); return; }
         
         const docRef = await db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks`).add({ name: newSetName, subject, ownerId: userId, createdAt: Timestamp.now(), cardCount: 0 });
-        const newSet = { id: docRef.id, name: newSetName, subject, ownerId: userId, createdAt: Timestamp.now(), cardCount: 0 };
+        const newSet = { id: docRef.id, name: newSetName, subject, ownerId: userId, createdAt: Timestamp.now(), cardCount: 0, isShared: false };
         
         showAppModal({ text: t('set_added_success') });
         setNewSetName('');
@@ -281,10 +590,13 @@ const SetListView: React.FC<any> = ({ subject, setSelectedSet, setView, onBack, 
         setIsCombiningLoading(true);
         showAppModal({ text: t('flashcards_creating_message') });
 
-        // Simulate a small delay for better UX
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         const cardPromises = selectedSetIds.map(setId => {
+            const set = allSets.find(s => s.id === setId);
+            if (set?.isShared) {
+                 return db.collection(`artifacts/${appId}/public/data/flashcards`).where('ownerId', '==', set.ownerId).where('setId', '==', setId).get();
+            }
             return db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', setId).get();
         });
         const cardSnapshots = await Promise.all(cardPromises);
@@ -312,24 +624,31 @@ const SetListView: React.FC<any> = ({ subject, setSelectedSet, setView, onBack, 
     return (
         <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4`}>
              <div className="flex justify-between items-center flex-wrap gap-2">
-                <button onClick={onBack} className="font-semibold flex items-center gap-1 hover:underline"><ArrowLeft size={16}/> {t('back_to_subjects_selection')}</button>
-                <h3 className="font-bold text-xl">{t('sets_for_subject', { subject: tSubject(subject) })}</h3>
-                {isCombining ? (
-                    <div className="flex gap-2">
-                        <button onClick={handleCombine} disabled={isCombiningLoading} className={`font-semibold text-sm py-2 px-3 rounded-lg text-white ${getThemeClasses('bg')} flex items-center gap-2`}>
-                            {isCombiningLoading && <Loader2 size={16} className="animate-spin" />}
-                            {t('combine_and_study')} ({selectedSetIds.length})
-                        </button>
-                        <button onClick={() => { setIsCombining(false); setSelectedSetIds([]); }} className="font-semibold text-sm py-2 px-3 rounded-lg bg-gray-200">{t('cancel_button')}</button>
-                    </div>
-                ) : (
-                    <button onClick={() => setIsCombining(true)} className="font-semibold text-sm py-2 px-3 rounded-lg bg-gray-200">{t('select_and_combine')}</button>
-                )}
+                <button onClick={onBack} title={t('back_to_subjects_selection')} className="p-2 rounded-full hover:bg-gray-200 transition-colors"><ArrowLeft/></button>
+                <h3 className="font-bold text-xl flex-grow text-center">{t('sets_for_subject', { subject: tSubject(subject) })}</h3>
+                <div className="w-9 h-9"></div> {/* Placeholder for centering */}
             </div>
-             <form onSubmit={handleCreateSet} className="flex gap-2">
-                <input value={newSetName} onChange={e => setNewSetName(e.target.value)} placeholder={t('set_name_placeholder')} className="flex-grow p-2 border rounded-lg"/>
-                <button type="submit" className={`flex items-center justify-center text-white font-bold p-2 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} w-12`}><PlusCircle size={20}/></button>
-            </form>
+             <div className="flex gap-2">
+                <form onSubmit={handleCreateSet} className="flex-grow flex gap-2">
+                    <input value={newSetName} onChange={e => setNewSetName(e.target.value)} placeholder={t('set_name_placeholder')} className="flex-grow p-2 border rounded-lg"/>
+                    <button type="submit" className={`flex items-center justify-center text-white font-bold p-2 rounded-lg ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} w-12`}><PlusCircle size={20}/></button>
+                </form>
+                 {!isCombining ? (
+                    <button onClick={() => setIsCombining(true)} className="flex items-center justify-center bg-gray-200 hover:bg-gray-300 font-semibold p-2 rounded-lg w-12" title={t('select_button')}>
+                        <Layers size={20}/>
+                    </button>
+                ) : null}
+            </div>
+
+            {isCombining ? (
+                <div className="flex gap-2 justify-center p-2 bg-gray-100 rounded-lg">
+                    <button onClick={handleCombine} disabled={isCombiningLoading} className={`font-semibold text-sm py-2 px-3 rounded-lg text-white ${getThemeClasses('bg')} flex items-center gap-2`}>
+                        {isCombiningLoading && <Loader2 size={16} className="animate-spin" />}
+                        {t('combine_and_study')} ({selectedSetIds.length})
+                    </button>
+                    <button onClick={() => { setIsCombining(false); setSelectedSetIds([]); }} className="font-semibold text-sm py-2 px-3 rounded-lg bg-gray-200">{t('cancel_button')}</button>
+                </div>
+            ) : null}
 
             {isLoading ? <div className="text-center p-8"><Loader2 className="animate-spin" /></div> : 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -390,7 +709,7 @@ const ModeSelectionView = ({ set: currentSet, onStartSession, onBack, ...props }
     return (
       <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4`}>
           <div className="flex justify-between items-center">
-            <button onClick={onBack} className="font-semibold flex items-center gap-1 hover:underline"><ArrowLeft size={16}/> {currentSet.isCombined ? t('back_to_subjects_selection') : t('back_to_sets')}</button>
+            <button onClick={onBack} title={currentSet.isCombined ? t('back_to_subjects_selection') : t('back_to_sets')} className="p-2 rounded-full hover:bg-gray-200 transition-colors"><ArrowLeft/></button>
             {!currentSet.isShared && !currentSet.isCombined && <button onClick={handleResetProgress} className="text-xs font-semibold text-gray-500 hover:text-red-500 flex items-center gap-1 transition-colors"><RotateCcw size={12}/>{t('reset_srs_progress')}</button>}
           </div>
           <h3 className="font-bold text-lg text-center">{t('choose_study_mode')}</h3>
@@ -521,7 +840,7 @@ const CardManagerView = ({ onBack, set: currentSet, ...props }: any) => {
         <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4`}>
             <AIGenerateCardsModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} onGenerate={handleGenerateWithAI} isGenerating={isGenerating} getThemeClasses={getThemeClasses} t={t} />
             <div className="flex justify-between items-center">
-                <button onClick={onBack} className="font-semibold flex items-center gap-1 hover:underline"><ArrowLeft size={16}/> {t('back_to_sets')}</button>
+                <button onClick={onBack} title={t('back_to_sets')} className="p-2 rounded-full hover:bg-gray-200 transition-colors"><ArrowLeft/></button>
                 <h3 className="font-bold text-lg text-center">{t('add_flashcard')} - {currentSet.name}</h3>
                 <div>{!currentSet.isShared && <button onClick={() => setIsAiModalOpen(true)} className="p-2 rounded-full text-purple-600 bg-purple-100 hover:bg-purple-200 transition-colors" title={t('flashcard_ai_modal_title')}><Sparkles size={20}/></button>}</div>
             </div>
@@ -580,8 +899,8 @@ const CramSessionView = ({ set: currentSet, onSessionComplete, onExit, ...props 
         setIsFlipped(false);
         setTimeout(() => {
              if (currentIndex + 1 >= cards.length) {
-                const summary = { stats: { correct: cards.length, incorrect: 0, total: cards.length, startTime: startTime.current, endTime: Date.now() }, answers: [...sessionAnswers, { card: cards[currentIndex], isCorrect: true }] };
-                onSessionComplete({ ...summary, earnedStars: 5 });
+                const summary = { stats: { correct: cards.length, incorrect: 0, total: cards.length, startTime: startTime.current, endTime: Date.now() }, answers: [...sessionAnswers, { card: cards[currentIndex], isCorrect: true }], earnedStars: 5 };
+                onSessionComplete(summary);
             } else {
                 setCurrentIndex(i => i + 1);
             }
@@ -589,11 +908,12 @@ const CramSessionView = ({ set: currentSet, onSessionComplete, onExit, ...props 
     }
     
     const card = useMemo(() => cards[currentIndex], [cards, currentIndex]);
+    const progressPercentage = cards.length > 0 ? (((currentIndex + 1) / cards.length) * 100) : 0;
     
     if (isLoading) return <div className="text-center p-8 flex justify-center items-center gap-2"><Loader2 className="animate-spin" /> {t('loading_cards')}</div>;
     if (cards.length === 0) return <NoCardsFoundView setView={(v:ViewType) => onExit()} t={t} getThemeClasses={getThemeClasses} />
 
-    return <StudyCardLayout card={card} isFlipped={isFlipped} setIsFlipped={setIsFlipped} progressPercentage={0} set={currentSet} onExit={onExit} t={t} getThemeClasses={getThemeClasses} cardsRemainingText={t('cards_to_go_counter', { current: currentIndex + 1, total: cards.length })}>
+    return <StudyCardLayout card={card} isFlipped={isFlipped} setIsFlipped={setIsFlipped} progressPercentage={progressPercentage} set={currentSet} onExit={onExit} t={t} getThemeClasses={getThemeClasses} cardsRemainingText={t('cards_to_go_counter', { current: currentIndex + 1, total: cards.length })}>
         <div className="flex justify-center mt-4">
            <button onClick={handleNext} className={`w-full max-w-xs text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-transform active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}>{t('next_card')}</button>
         </div>
@@ -653,6 +973,7 @@ const LearnSessionView = ({ set: currentSet, onSessionComplete, onExit, ...props
     };
 
     const card = sessionQueue[0];
+    const progressPercentage = dueCards.length > 0 ? (((dueCards.length - sessionQueue.length) / dueCards.length) * 100) : 0;
 
     useEffect(() => {
         if (!isLoading && dueCards.length > 0 && sessionQueue.length === 0) {
@@ -664,7 +985,7 @@ const LearnSessionView = ({ set: currentSet, onSessionComplete, onExit, ...props
     if (isLoading) return <div className="text-center p-8 flex justify-center items-center gap-2"><Loader2 className="animate-spin" /> {t('loading_cards')}</div>;
     if (dueCards.length === 0) return <AllCardsLearnedView {...props} set={currentSet} setView={setView} />
 
-    return <StudyCardLayout card={card} isFlipped={isFlipped} setIsFlipped={setIsFlipped} progressPercentage={0} set={currentSet} onExit={onExit} t={t} getThemeClasses={getThemeClasses} cardsRemainingText={t('cards_to_go', {count: sessionQueue.length})} >
+    return <StudyCardLayout card={card} isFlipped={isFlipped} setIsFlipped={setIsFlipped} progressPercentage={progressPercentage} set={currentSet} onExit={onExit} t={t} getThemeClasses={getThemeClasses} cardsRemainingText={t('cards_to_go', {count: sessionQueue.length})} >
          <div className="flex justify-around items-center mt-4">
             {isFlipped ? (
                 <>
@@ -677,7 +998,7 @@ const LearnSessionView = ({ set: currentSet, onSessionComplete, onExit, ...props
 }
 
 const MultipleChoiceSessionView = ({ set: currentSet, onSessionComplete, onExit, ...props }: any) => {
-    const { t, getThemeClasses, showAppModal, setView } = props;
+    const { t, getThemeClasses, showAppModal } = props;
     const [allCards, setAllCards] = useState<Flashcard[]>([]);
     const [sessionQueue, setSessionQueue] = useState<Flashcard[]>([]);
     const [choices, setChoices] = useState<string[]>([]);
@@ -685,6 +1006,7 @@ const MultipleChoiceSessionView = ({ set: currentSet, onSessionComplete, onExit,
     const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
     const [sessionAnswers, setSessionAnswers] = useState<SessionAnswer[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [showNextButton, setShowNextButton] = useState(false);
     const startTime = useRef(Date.now());
 
     useEffect(() => {
@@ -723,291 +1045,66 @@ const MultipleChoiceSessionView = ({ set: currentSet, onSessionComplete, onExit,
         const isCorrect = answer === card.answer;
         setSelectedChoice(answer);
         setFeedback(isCorrect ? 'correct' : 'incorrect');
-        const newAnswers = [...sessionAnswers, { card, userAnswer: answer, isCorrect }];
-        setSessionAnswers(newAnswers);
+        setSessionAnswers(prev => [...prev, { card, userAnswer: answer, isCorrect }]);
+        setShowNextButton(true);
+    };
 
-        setTimeout(() => {
-            setFeedback(null);
-            setSelectedChoice(null);
-            if (sessionQueue.length === 1) {
-                const stats = { correct: newAnswers.filter(a=>a.isCorrect).length, incorrect: newAnswers.filter(a=>!a.isCorrect).length, total: newAnswers.length, startTime: startTime.current, endTime: Date.now() };
-                onSessionComplete({ stats, answers: newAnswers, earnedStars: calculateStars(stats.correct, stats.total) });
-            } else {
-                setSessionQueue(q => q.slice(1));
-            }
-        }, 1200);
-    }
+    const handleNext = () => {
+        setShowNextButton(false);
+        setFeedback(null);
+        setSelectedChoice(null);
+        if (sessionQueue.length === 1) {
+            const stats = { correct: sessionAnswers.filter(a=>a.isCorrect).length, incorrect: sessionAnswers.filter(a=>!a.isCorrect).length, total: sessionAnswers.length, startTime: startTime.current, endTime: Date.now() };
+            onSessionComplete({ stats, answers: sessionAnswers, earnedStars: calculateStars(stats.correct, stats.total) });
+        } else {
+            setSessionQueue(q => q.slice(1));
+        }
+    };
     
     if (isLoading) return <div className="text-center p-8 flex justify-center items-center gap-2"><Loader2 className="animate-spin" /> {t('loading_cards')}</div>;
 
     const currentIndex = allCards.length - sessionQueue.length;
+    const progressPercentage = allCards.length > 0 ? (((currentIndex + 1) / allCards.length) * 100) : 0;
 
     return (
-        <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4 flex flex-col`}>
-             <div className="flex justify-between items-center">
-                <button onClick={onExit} className="font-semibold flex items-center gap-1 hover:underline self-start"><ArrowLeft size={16}/> {t('back_to_sets')}</button>
-                <div className={`font-semibold ${getThemeClasses('text')}`}>{t('cards_to_go_counter', { current: currentIndex + 1, total: allCards.length })}</div>
-             </div>
-             <h3 className="font-bold text-center text-xl">{currentSet.name}</h3>
-             <div className="bg-white rounded-lg shadow-lg flex items-center justify-center p-6 text-center h-48"><p className="text-2xl font-semibold">{card?.question}</p></div>
-             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {choices.map(choice => {
-                    let feedbackClass = `${getThemeClasses('bg')} border-transparent hover:saturate-150`;
-                    if (feedback && selectedChoice === choice) feedbackClass = feedback === 'correct' ? 'bg-green-500 border-green-600' : 'bg-red-500 border-red-600';
-                    else if (feedback && choice === card?.answer) feedbackClass = 'bg-green-500 border-green-600';
-                    else if (feedback) feedbackClass = 'bg-gray-400 border-gray-500 opacity-70';
-                    return <button key={choice} onClick={() => handleAnswer(choice)} disabled={!!feedback} className={`p-4 rounded-lg font-semibold text-white shadow-md border-b-4 transition-all active:scale-95 disabled:cursor-not-allowed ${feedbackClass}`}>{choice}</button>
-                })}
-             </div>
-        </div>
-    );
-};
-
-const VocabSessionView = ({ set: currentSet, onSessionComplete, onExit, ...props }: any) => {
-    const { t, getThemeClasses, showAppModal, user } = props;
-    const [cards, setCards] = useState<Flashcard[]>([]);
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [userAnswer, setUserAnswer] = useState('');
-    const [isChecking, setIsChecking] = useState(false);
-    const [feedback, setFeedback] = useState<{ isCorrect: boolean, text: string } | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [sessionAnswers, setSessionAnswers] = useState<SessionAnswer[]>([]);
-    const startTime = useRef(Date.now());
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        const fetchCards = async () => {
-            if (currentSet.isCombined) setCards(shuffleArray(currentSet.cards));
-            else {
-                const q = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', currentSet.id);
-                const snapshot = await q.get();
-                setCards(shuffleArray(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Flashcard))));
-            }
-            setIsLoading(false);
-        };
-        fetchCards().catch(() => showAppModal({text: t('error_failed_to_load_cards')}));
-    }, [currentSet, showAppModal, t]);
-
-    const handleNext = () => {
-        setFeedback(null);
-        setUserAnswer('');
-        if (currentIndex + 1 >= cards.length) {
-            const stats = { correct: sessionAnswers.filter(a=>a.isCorrect).length, incorrect: sessionAnswers.filter(a=>!a.isCorrect).length, total: sessionAnswers.length, startTime: startTime.current, endTime: Date.now() };
-            onSessionComplete({ stats, answers: sessionAnswers, earnedStars: calculateStars(stats.correct, stats.total) });
-        } else {
-            setCurrentIndex(i => i + 1);
-        }
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!userAnswer.trim() || isChecking || feedback) return;
-        
-        const currentCard = cards[currentIndex];
-        const isSimpleCorrect = userAnswer.trim().toLowerCase() === currentCard.answer.trim().toLowerCase();
-        
-        if (isSimpleCorrect) {
-            setFeedback({ isCorrect: true, text: t('feedback_good') });
-            setSessionAnswers(prev => [...prev, { card: currentCard, userAnswer, isCorrect: true }]);
-            setTimeout(handleNext, 1500);
-            return;
-        }
-
-        setIsChecking(true);
-        setFeedback(null);
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const prompt = `You are a helpful language tutor. Your task is to grade a user's answer for a flashcard. The correct answer is: "${currentCard.answer}". The user's answer is: "${userAnswer}". Please evaluate if the user's answer is correct. An answer is correct if it is an exact match, a common synonym, a close translation, or captures the essential meaning of the correct answer. If the correct answer contains text in parentheses, that part is optional. Be lenient with minor typos. Respond with ONLY the single word "CORRECT" or "INCORRECT". Do not provide any explanation.`;
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { thinkingConfig: { thinkingBudget: 0 } } });
-            const resultText = response.text.trim().toUpperCase();
-            const isCorrect = resultText.includes('CORRECT');
-            setFeedback({ isCorrect, text: isCorrect ? t('feedback_good') : t('ai_feedback_incorrect', { correct_answer: currentCard.answer }) });
-            setSessionAnswers(prev => [...prev, { card: currentCard, userAnswer, isCorrect }]);
-            setTimeout(handleNext, 2000);
-        } catch (error) {
-            showAppModal({ text: t('error_ai_check_failed') });
-        } finally {
-            setIsChecking(false);
-        }
-    };
-    
-    useEffect(() => { inputRef.current?.focus(); }, [currentIndex]);
-
-    if (isLoading) return <div className="text-center p-8 flex justify-center items-center gap-2"><Loader2 className="animate-spin" /> {t('loading_cards')}</div>;
-    if (cards.length === 0) return <NoCardsFoundView setView={(v:ViewType) => onExit()} t={t} getThemeClasses={getThemeClasses} />;
-    
-    const card = cards[currentIndex];
-    
-    return (
-        <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4 flex flex-col`}>
-             <div className="flex justify-between items-center">
-                <button onClick={onExit} className="font-semibold flex items-center gap-1 hover:underline self-start"><ArrowLeft size={16}/> {t('back_to_sets')}</button>
-                <div className={`font-semibold ${getThemeClasses('text')}`}>{t('cards_to_go_counter', { current: currentIndex + 1, total: cards.length })}</div>
-             </div>
-             <h3 className="font-bold text-center text-xl">{currentSet.name}</h3>
-             <div className="bg-white rounded-lg shadow-lg flex items-center justify-center p-6 text-center h-48"><p className="text-2xl font-semibold">{card?.question}</p></div>
-             <form onSubmit={handleSubmit} className="mt-2 space-y-3">
-                <input ref={inputRef} type="text" value={userAnswer} onChange={e => setUserAnswer(e.target.value)} placeholder={t('your_answer')} className="w-full p-3 border rounded-lg text-center" disabled={isChecking || !!feedback} />
-                <button type="submit" disabled={isChecking || !!feedback || !userAnswer.trim()} className={`w-full text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-transform active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} disabled:opacity-50 flex items-center justify-center`}>
-                    {isChecking ? <Loader2 className="w-5 h-5 animate-spin"/> : t('submit_answer')}
-                </button>
-             </form>
-             {feedback && <div className={`mt-2 p-2 rounded-md text-center font-semibold text-sm ${feedback.isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{feedback.text}</div>}
-        </div>
-    );
-};
-
-// --- Reusable UI Components for Study Sessions ---
-const StudyCardLayout = ({ children, card, isFlipped, setIsFlipped, set: currentSet, onExit, t, getThemeClasses, cardsRemainingText }: any) => {
-    return (
-        <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4 flex flex-col`}>
-            <style>{`.flip-card { transform-style: preserve-3d; } .flip-card-inner { transition: transform 0.6s; transform-style: preserve-3d; } .flip-card.flipped .flip-card-inner { transform: rotateY(180deg); } .flip-card-front, .flip-card-back { -webkit-backface-visibility: hidden; backface-visibility: hidden; position: absolute; top: 0; left: 0; right: 0; bottom: 0; } .flip-card-back { transform: rotateY(180deg); }`}</style>
-            <div className="flex justify-between items-center">
-                <button onClick={onExit} className="font-semibold flex items-center gap-1 hover:underline self-start"><ArrowLeft size={16}/> {t('back_to_sets')}</button>
-                <div className={`font-semibold ${getThemeClasses('text')}`}>{cardsRemainingText}</div>
-            </div>
-            <div className="text-center"><h3 className="font-bold text-xl">{currentSet.name}</h3></div>
-            <div className={`flip-card w-full h-64 sm:h-80 relative ${isFlipped ? 'flipped' : ''}`} style={{ perspective: '1000px' }}>
-                <div className="flip-card-inner w-full h-full">
-                    <div onClick={() => setIsFlipped(true)} className="flip-card-front bg-white rounded-lg shadow-lg flex items-center justify-center p-6 text-center cursor-pointer"><p className="text-2xl font-semibold">{card?.question}</p></div>
-                    <div onClick={() => setIsFlipped(false)} className={`flip-card-back ${getThemeClasses('bg')} text-white rounded-lg shadow-lg flex items-center justify-center p-6 text-center cursor-pointer`}><p className="text-xl font-medium">{card?.answer}</p></div>
-                </div>
-            </div>
-            {children}
-        </div>
-    );
-}
-
-const NoCardsFoundView = ({setView, onBack, t, getThemeClasses }: any) => (
-    <div className={`p-6 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4 text-center`}>
-        <BookOpen className={`w-16 h-16 mx-auto ${getThemeClasses('text')}`} /><h3 className="font-bold text-lg">{t('no_flashcards_found')}</h3><p className="text-gray-600">Add some cards in the 'Manage' section to start studying.</p>
-        <div className="flex justify-center gap-4 mt-4">
-             <button onClick={onBack || (() => setView('set-list'))} className="font-semibold flex items-center gap-1 hover:underline"><ArrowLeft size={16}/> {t('back_to_sets')}</button>
-             <button onClick={() => setView('manage')} className={`flex items-center gap-2 font-semibold text-sm py-2 px-3 rounded-lg transition-colors active:scale-95 text-white ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}><Settings size={16}/> {t('manage_cards')}</button>
-        </div>
-    </div>
-);
-
-const AllCardsLearnedView = ({ set: currentSet, setView, ...props }: any) => {
-    const { t, getThemeClasses } = props;
-    const handleResetProgressAndRestart = async () => {
-        const batch = db.batch();
-        const cardsRef = db.collection(`artifacts/${appId}/public/data/flashcards`).where('setId', '==', currentSet.id);
-        const snapshot = await cardsRef.get();
-        snapshot.forEach(cardDoc => batch.update(cardDoc.ref, { dueDate: Timestamp.now(), interval: 0, easeFactor: 2.5 }));
-        await batch.commit();
-        setView('learn');
-    };
-    return (
-        <div className={`p-6 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4 text-center`}>
-            <Check className={`w-16 h-16 mx-auto ${getThemeClasses('text')}`} /><h3 className="font-bold text-lg">{t('all_cards_learned_title')}</h3><p className="text-gray-600">{t('all_cards_learned_desc')}</p>
-            <div className="flex flex-col sm:flex-row justify-center gap-4 mt-4">
-                 <button onClick={() => setView('mode-selection')} className={`w-full sm:w-auto font-bold py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 transition-colors active:scale-95 flex items-center justify-center gap-2`}><Layers size={16}/> {t('choose_other_method_button')}</button>
-                 {!currentSet.isShared && !currentSet.isCombined && <button onClick={handleResetProgressAndRestart} className={`w-full sm:w-auto font-bold py-2 px-4 rounded-lg text-white ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} transition-colors active:scale-95 flex items-center justify-center gap-2`}><RotateCcw size={16}/> {t('reset_and_start_over_button')}</button>}
-            </div>
-        </div>
-    );
-};
-
-const calculateStars = (correct: number, total: number) => {
-    if (total === 0) return 0;
-    const percentage = (correct / total) * 100;
-    if (percentage >= 99) return 5;
-    if (percentage >= 80) return 4;
-    if (percentage >= 60) return 3;
-    if (percentage >= 40) return 2;
-    if (percentage >= 20) return 1;
-    return 0;
-};
-
-const SessionSummaryView = ({ set, summary, setView, onStartSession, onBack, ...props }: any) => {
-    const { t, getThemeClasses, userId, showAppModal, setSelectedSet } = props;
-    const { stats, answers, earnedStars } = summary;
-    const incorrectAnswers = answers.filter(a => !a.isCorrect);
-    const correctAnswers = answers.filter(a => a.isCorrect);
-    const grade = stats.total > 0 ? (stats.correct / stats.total) * 9 + 1 : 1;
-    const timeSpentMs = stats.endTime - stats.startTime;
-    const minutes = Math.floor(timeSpentMs / 60000);
-    const seconds = ((timeSpentMs % 60000) / 1000).toFixed(0);
-
-    const handlePracticeIncorrect = () => {
-        const incorrectCards = incorrectAnswers.map(a => a.card);
-        const practiceSet: FlashcardSet = {
-            id: 'practice-' + Date.now(), name: `${set.name} - ${t('practice_incorrect')}`, subject: set.subject,
-            ownerId: userId, createdAt: Timestamp.now(), cardCount: incorrectCards.length,
-            isCombined: true, cards: incorrectCards
-        };
-        setSelectedSet(practiceSet);
-        onStartSession('cram');
-    };
-    
-    const handleCreateSetFromIncorrect = async () => {
-        const newSetName = prompt(t('new_set_name_prompt'));
-        if (!newSetName || incorrectAnswers.length === 0) return;
-
-        const newSetRef = db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks`).doc();
-        const batch = db.batch();
-        batch.set(newSetRef, { name: newSetName, subject: set.subject, ownerId: userId, createdAt: Timestamp.now(), cardCount: incorrectAnswers.length });
-        
-        incorrectAnswers.forEach(({ card }) => {
-            const newCardRef = db.collection(`artifacts/${appId}/public/data/flashcards`).doc();
-            batch.set(newCardRef, { ...card, setId: newSetRef.id, ownerId: userId, createdAt: Timestamp.now() });
-        });
-
-        await batch.commit();
-        showAppModal({ text: t('new_set_created_success', { name: newSetName }) });
-    };
-
-    return (
-     <div className={`p-6 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-6`}>
-        <div className="text-center">
-            <h3 className="font-bold text-2xl">{t('session_summary_title')}</h3>
-            <div className="mt-4">
-                <p className="font-semibold text-lg">{t('stars_earned_title')}</p>
-                <div className="flex justify-center items-center">
-                    {[...Array(5)].map((_, i) => (
-                        <Star key={i} size={40} className={`transition-colors ${i < earnedStars ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} />
-                    ))}
-                </div>
-            </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-            <div className="bg-white p-4 rounded-lg shadow-md"><p className="text-sm font-bold text-gray-500">{t('your_grade')}</p><p className={`text-3xl font-bold ${grade < 5.5 ? 'text-red-500' : 'text-green-500'}`}>{grade.toFixed(1)}</p></div>
-            <div className="bg-white p-4 rounded-lg shadow-md"><p className="text-sm font-bold text-gray-500">{t('correct_answers')}</p><p className="text-3xl font-bold text-green-500">{stats.correct}</p></div>
-            <div className="bg-white p-4 rounded-lg shadow-md"><p className="text-sm font-bold text-gray-500">{t('incorrect_answers')}</p><p className="text-3xl font-bold text-red-500">{stats.incorrect}</p></div>
-            <div className="bg-white p-4 rounded-lg shadow-md"><p className="text-sm font-bold text-gray-500">{t('time_spent')}</p><p className="text-3xl font-bold text-gray-700">{minutes}:{seconds.padStart(2, '0')}</p></div>
-        </div>
-        <div className="space-y-4">
-            {incorrectAnswers.length > 0 && (
-                <div>
-                    <h4 className="font-bold text-lg text-red-600 mb-2">{t('incorrect_answers')} ({incorrectAnswers.length})</h4>
-                    <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                        {incorrectAnswers.map(({ card, userAnswer }, i) => (
-                            <div key={i} className="bg-red-50 p-3 rounded-md border border-red-100 text-sm"><p className="font-semibold">{card.question}</p>{userAnswer && <p>{t('your_answer')}: <span className="text-red-700">{userAnswer}</span></p>}<p>{t('correct_answer')}: <span className="text-green-700 font-medium">{card.answer}</span></p></div>
-                        ))}
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2 mt-3">
-                         <button onClick={handlePracticeIncorrect} className={`w-full font-bold py-2 px-4 rounded-lg bg-orange-500 hover:bg-orange-600 text-white`}>{t('practice_incorrect')}</button>
-                         {!set.isCombined && <button onClick={handleCreateSetFromIncorrect} className={`w-full font-bold py-2 px-4 rounded-lg bg-orange-200 hover:bg-orange-300 text-orange-800`}>{t('create_set_from_incorrect')}</button>}
-                    </div>
+        <StudyCardLayout
+            card={card}
+            isFlipped={false}
+            setIsFlipped={() => {}}
+            progressPercentage={progressPercentage}
+            set={currentSet}
+            onExit={onExit}
+            t={t}
+            getThemeClasses={getThemeClasses}
+            cardsRemainingText={t('cards_to_go_counter', { current: currentIndex + 1, total: allCards.length })}
+        >
+            {showNextButton ? (
+                <button onClick={handleNext} className={`w-full text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-transform active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}>{t('next_card')}</button>
+            ) : (
+                <div className="grid grid-cols-2 gap-3">
+                    {choices.map(choice => {
+                        const isCorrectChoice = choice === card.answer;
+                        const isSelectedChoice = choice === selectedChoice;
+                        let buttonClass = 'bg-white hover:bg-gray-100';
+                        if (feedback) {
+                            if (isCorrectChoice) buttonClass = 'bg-green-200 border-green-400';
+                            else if (isSelectedChoice) buttonClass = 'bg-red-200 border-red-400';
+                            else buttonClass = 'bg-gray-100 opacity-60';
+                        }
+                        return (
+                            <button
+                                key={choice}
+                                onClick={() => handleAnswer(choice)}
+                                disabled={!!feedback}
+                                className={`p-4 rounded-lg font-semibold text-center border-2 transition-all duration-300 ${buttonClass}`}
+                            >
+                                {choice}
+                            </button>
+                        );
+                    })}
                 </div>
             )}
-            {correctAnswers.length > 0 && (
-                <div>
-                    <h4 className="font-bold text-lg text-green-600 mb-2">{t('correct_answers')} ({correctAnswers.length})</h4>
-                    <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                         {correctAnswers.map(({ card, userAnswer }, i) => (
-                            <div key={i} className="bg-green-50 p-3 rounded-md border border-green-100 text-sm"><p className="font-semibold">{card.question}</p>{userAnswer && <p>{t('your_answer')}: <span className="text-green-700">{userAnswer}</span></p>}<p>{t('correct_answer')}: <span className="text-green-700 font-medium">{card.answer}</span></p></div>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
-        <div className="flex justify-center gap-4 mt-4 w-full">
-            <button onClick={onBack} className={`w-full font-bold py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300`}>{t('choose_other_method_button')}</button>
-        </div>
-    </div>
+        </StudyCardLayout>
     );
 };
-
 export default FlashcardsView;

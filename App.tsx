@@ -1,6 +1,8 @@
 
 
 
+
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Tool, Type } from '@google/genai';
@@ -729,6 +731,44 @@ const App: React.FC = () => {
                 await batch.commit();
             }
         });
+        
+        // Listen for new shared plans to create notifications
+        const sharedPlansQuery = db.collection(`artifacts/${appId}/public/data/sharedPlans`).where('recipientEmail', '==', user.email);
+        const unsubscribeSharedPlans = sharedPlansQuery.onSnapshot(async (snapshot) => {
+            if (snapshot.empty || !user?.uid) return;
+        
+            const userNotifsRef = db.collection(`artifacts/${appId}/users/${user.uid}/notifications`);
+            const existingPlanNotifsQuery = userNotifsRef.where('planId', '!=', null);
+            const existingNotifsSnapshot = await existingPlanNotifsQuery.get();
+            const existingPlanIds = new Set(existingNotifsSnapshot.docs.map(doc => doc.data().planId));
+        
+            const batch = db.batch();
+            let hasNewShares = false;
+        
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added') {
+                    const shareData = change.doc.data();
+                    const planId = change.doc.id; // The shared document ID is the plan ID
+        
+                    if (!existingPlanIds.has(planId)) {
+                        const newNotifRef = userNotifsRef.doc();
+                        batch.set(newNotifRef, {
+                            title: t('notification_plan_share_title'),
+                            text: t('notification_plan_share_text', { name: shareData.sharerName, planName: shareData.title }),
+                            type: 'plan_share',
+                            read: false,
+                            createdAt: shareData.createdAt,
+                            planId: planId,
+                        });
+                        hasNewShares = true;
+                    }
+                }
+            });
+        
+            if (hasNewShares) {
+                await batch.commit();
+            }
+        });
 
 
         // Fetch all data for progress view & home dashboard
@@ -765,6 +805,7 @@ const App: React.FC = () => {
             unsubscribeBroadcasts();
             unsubscribeFeedback();
             unsubscribeSharedSets();
+            unsubscribeSharedPlans();
             unsubscribeAllFiles();
             unsubscribeAllNotes();
             unsubscribeAllSets();

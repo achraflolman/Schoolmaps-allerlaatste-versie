@@ -1,9 +1,7 @@
-
-
 import React, { useEffect, useState } from 'react';
 import { db, appId, arrayUnion } from '../../services/firebase';
 import type { AppUser, Notification, ModalContent } from '../../types';
-import { Bell, Flame, UserCog, CheckCheck, MessageSquare, ArrowLeft, Trash2, LifeBuoy, Share2 } from 'lucide-react';
+import { Bell, Flame, UserCog, CheckCheck, MessageSquare, ArrowLeft, Trash2, LifeBuoy, Share2, ClipboardList } from 'lucide-react';
 
 interface NotificationsViewProps {
     user: AppUser;
@@ -26,6 +24,8 @@ const NotificationIcon = ({ type, getThemeClasses }: { type: Notification['type'
             return <div className="p-3 bg-green-100 rounded-full"><LifeBuoy className="w-5 h-5 text-green-600" /></div>;
         case 'flashcard_share':
             return <div className="p-3 bg-indigo-100 rounded-full"><Share2 className="w-5 h-5 text-indigo-600" /></div>;
+        case 'plan_share':
+             return <div className="p-3 bg-cyan-100 rounded-full"><ClipboardList className="w-5 h-5 text-cyan-600" /></div>;
         case 'system':
         default:
             return <div className="p-3 bg-blue-100 rounded-full"><Bell className="w-5 h-5 text-blue-600" /></div>;
@@ -59,7 +59,9 @@ const NotificationsView: React.FC<NotificationsViewProps> = ({ user, notificatio
         }
         if (notif.type === 'flashcard_share') {
             setCurrentView('tools');
-            // A more advanced implementation could switch the active tool in ToolsView
+        }
+        if (notif.type === 'plan_share') {
+            setCurrentView('planner');
         }
     };
     
@@ -129,9 +131,9 @@ const NotificationsView: React.FC<NotificationsViewProps> = ({ user, notificatio
          return (
              <div className="space-y-6 animate-fade-in text-center">
                 <div className="flex justify-between items-center">
-                    <button onClick={() => setCurrentView('home')} className="flex items-center bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-lg transition-colors active:scale-95"><ArrowLeft className="w-4 h-4 mr-2"/>{t('back_button')}</button>
-                    <h2 className={`text-3xl font-bold ${getThemeClasses('text-strong')}`}>{t('notifications_title')}</h2>
-                    <div className="w-24"></div>
+                    <button onClick={() => setCurrentView('home')} className="p-2 rounded-full hover:bg-gray-200 transition-colors"><ArrowLeft /></button>
+                    <h2 className={`text-2xl font-bold text-center flex-grow ${getThemeClasses('text-strong')}`}>{t('notifications_title')}</h2>
+                    <div className="w-9 h-9"></div> {/* Placeholder */}
                 </div>
                 <div className={`p-6 sm:p-8 rounded-xl shadow-lg ${getThemeClasses('bg-light')} min-h-[60vh] flex flex-col justify-center items-center`}>
                     <Bell className="mx-auto h-20 w-20 text-gray-300" />
@@ -147,17 +149,17 @@ const NotificationsView: React.FC<NotificationsViewProps> = ({ user, notificatio
 
     return (
         <div className="space-y-6 animate-fade-in">
-             <div className="flex justify-between items-center flex-wrap gap-2">
-                 <button onClick={() => setCurrentView('home')} className="flex items-center bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-lg transition-colors active:scale-95">
-                    <ArrowLeft className="w-4 h-4 mr-2" /> {t('back_button')}
+             <div className="flex items-center justify-between">
+                <button onClick={() => setCurrentView('home')} className="p-2 rounded-full hover:bg-gray-200 transition-colors" title={t('back_button')}>
+                    <ArrowLeft />
                 </button>
-                <h2 className={`text-3xl font-bold ${getThemeClasses('text-strong')}`}>{t('notifications_title')}</h2>
+                <h2 className={`text-2xl font-bold text-center flex-grow ${getThemeClasses('text-strong')}`}>{t('notifications_title')}</h2>
                  <div className="flex items-center gap-2">
-                    <button onClick={handleMarkAllAsRead} disabled={unreadCount === 0 || isMarkingAsRead} className="flex items-center gap-2 text-sm text-blue-600 bg-blue-100 hover:bg-blue-200 font-semibold px-3 py-2 rounded-lg transition-colors active:scale-95 disabled:opacity-50">
-                        <CheckCheck size={16}/> {t('mark_all_as_read')}
+                    <button onClick={handleMarkAllAsRead} disabled={unreadCount === 0 || isMarkingAsRead} className="p-2 text-blue-600 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors active:scale-95 disabled:opacity-50" title={t('mark_all_as_read')}>
+                        <CheckCheck size={18}/>
                     </button>
-                    <button onClick={handleClearAll} disabled={notifications.length === 0 || isClearing} className="p-2 text-sm text-red-600 bg-red-100 hover:bg-red-200 font-semibold rounded-lg transition-colors active:scale-95 disabled:opacity-50">
-                        <Trash2 size={16}/>
+                    <button onClick={handleClearAll} disabled={notifications.length === 0 || isClearing} className="p-2 text-red-600 bg-red-100 hover:bg-red-200 rounded-lg transition-colors active:scale-95 disabled:opacity-50" title={t('confirm_clear_all_notifications')}>
+                        <Trash2 size={18}/>
                     </button>
                  </div>
             </div>
@@ -171,7 +173,7 @@ const NotificationsView: React.FC<NotificationsViewProps> = ({ user, notificatio
                 ) : (
                     <ul className="space-y-4">
                         {notifications.map(notif => (
-                            <li key={notif.id} onClick={() => handleNotificationClick(notif)} className={`bg-white p-4 rounded-lg shadow-sm flex items-start gap-4 transition-all duration-300 ${(notif.type === 'admin' || notif.type === 'feedback_reply' || notif.type === 'flashcard_share') ? 'cursor-pointer hover:shadow-md' : ''} ${!notif.read ? 'border-l-4 ' + getThemeClasses('border') : 'opacity-80'}`}>
+                            <li key={notif.id} onClick={() => handleNotificationClick(notif)} className={`bg-white p-4 rounded-lg shadow-sm flex items-start gap-4 transition-all duration-300 ${(notif.type === 'admin' || notif.type === 'feedback_reply' || notif.type === 'flashcard_share' || notif.type === 'plan_share') ? 'cursor-pointer hover:shadow-md' : ''} ${!notif.read ? 'border-l-4 ' + getThemeClasses('border') : 'opacity-80'}`}>
                                 <NotificationIcon type={notif.type} getThemeClasses={getThemeClasses} />
                                 <div className="flex-1">
                                     {notif.title && <p className="font-bold text-gray-900">{notif.title}</p>}

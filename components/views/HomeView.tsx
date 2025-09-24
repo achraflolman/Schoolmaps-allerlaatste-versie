@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import type { AppUser, CalendarEvent, ToDoTask, StudySession, FlashcardSet, FileData } from '../../types';
-import { ArrowUp, ArrowDown, CheckCircle, Clock, Layers, Calendar, FileText, ChevronRight, Link } from 'lucide-react';
+import type { AppUser, CalendarEvent, ToDoTask, StudySession, FlashcardSet, FileData, Note, StudyPlan } from '../../types';
+import { ArrowUp, ArrowDown, CheckCircle, Clock, Layers, Calendar, FileText, ChevronRight, Link, BookOpen, ClipboardList } from 'lucide-react';
 import { defaultHomeLayout } from '../../constants';
 
 // --- HELPER FUNCTIONS ---
@@ -97,29 +97,92 @@ const TodaysAgenda: React.FC<{
 };
 
 
-const RecentFiles: React.FC<{
+const RecentActivities: React.FC<{
     files: FileData[];
+    notes: Note[];
+    plans: StudyPlan[];
+    sets: FlashcardSet[];
     t: (key: string) => string;
-}> = ({ files, t }) => {
+    onActivityClick: (type: string, context: any) => void;
+    getThemeClasses: (variant: string) => string;
+    language: 'nl' | 'en';
+}> = ({ files, notes, plans, sets, t, onActivityClick, getThemeClasses, language }) => {
+
+    const recentItems = useMemo(() => {
+        const allItems = [
+            ...files.map(f => ({ type: 'file', data: f, date: f.createdAt.toDate() })),
+            ...notes.map(n => ({ type: 'note', data: n, date: n.createdAt.toDate() })),
+            ...plans.map(p => ({ type: 'plan', data: p, date: p.createdAt.toDate() })),
+            ...sets.map(s => ({ type: 'set', data: s, date: s.createdAt.toDate() })),
+        ];
+
+        return allItems.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 4);
+    }, [files, notes, plans, sets]);
+
+    const ICONS: { [key: string]: React.ReactNode } = {
+        file: <FileText className={`w-5 h-5 text-blue-600`} />,
+        note: <FileText className={`w-5 h-5 text-amber-600`} />,
+        plan: <ClipboardList className={`w-5 h-5 text-purple-600`} />,
+        set: <BookOpen className={`w-5 h-5 text-emerald-600`} />,
+    };
+
+    const getBadgeClass = (type: string) => {
+        switch (type) {
+            case 'file': return 'bg-blue-100 text-blue-800';
+            case 'note': return 'bg-amber-100 text-amber-800';
+            case 'plan': return 'bg-purple-100 text-purple-800';
+            case 'set': return 'bg-emerald-100 text-emerald-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    };
+
     return (
         <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-lg">
-            <h3 className="text-xl font-bold mb-4">{t('recent_files_title')}</h3>
-            {files.length === 0 ? (
-                <p className="text-center text-gray-500 italic py-4">{t('no_recent_files')}</p>
+            <h3 className="text-xl font-bold mb-4">{t('recent_activities_title')}</h3>
+            {recentItems.length === 0 ? (
+                <p className="text-center text-gray-500 italic py-4">{t('no_recent_activity')}</p>
             ) : (
                 <ul className="space-y-2 max-h-60 overflow-y-auto">
-                    {files.map(file => (
-                        <li key={file.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
-                            <div className="flex items-center gap-3">
-                                <FileText className="w-5 h-5 text-gray-400" />
+                    {recentItems.map(item => {
+                        const title = item.type === 'set' ? (item.data as FlashcardSet).name : (item.data as any).title;
+                        const typeText = t(`activity_type_${item.type}`);
+                        
+                        const commonContent = (
+                            <>
+                                {ICONS[item.type]}
                                 <div>
-                                    <p className="font-semibold text-gray-800 truncate">{file.title}</p>
-                                    <p className="text-xs text-gray-500">{(file.createdAt as any).toDate().toLocaleDateString()}</p>
+                                    <p className="font-semibold text-gray-800 truncate">{title}</p>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${getBadgeClass(item.type)}`}>{typeText}</span>
+                                        <p className="text-xs text-gray-500">{item.date.toLocaleDateString()}</p>
+                                    </div>
                                 </div>
-                            </div>
-                             <a href={file.fileUrl} target="_blank" rel="noopener noreferrer" className="ml-2 bg-green-500 hover:bg-green-600 text-white text-xs py-1 px-2 rounded-md shadow flex items-center gap-1 transition-colors active:scale-95"><Link className="w-3 h-3"/> {t('view_button')}</a>
-                        </li>
-                    ))}
+                            </>
+                        );
+
+                        if (item.type === 'file') {
+                            const file = item.data as FileData;
+                            return (
+                                <li key={`file-${file.id}`} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
+                                    <div className="flex items-center gap-3">
+                                        {commonContent}
+                                    </div>
+                                    <a href={file.fileUrl} target="_blank" rel="noopener noreferrer" className="ml-2 bg-green-500 hover:bg-green-600 text-white text-xs py-1 px-2 rounded-md shadow flex items-center gap-1 transition-colors active:scale-95"><Link className="w-3 h-3"/> {t('view_button')}</a>
+                                </li>
+                            );
+                        }
+
+                        const context = item.type === 'note' ? { note: item.data } : item.type === 'set' ? { set: item.data } : {};
+
+                        return (
+                            <li key={`${item.type}-${item.data.id}`} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
+                                <button onClick={() => onActivityClick(item.type, context)} className="flex items-center gap-3 text-left w-full">
+                                    {commonContent}
+                                </button>
+                                <ChevronRight className="w-5 h-5 text-gray-400" />
+                            </li>
+                        );
+                    })}
                 </ul>
             )}
         </div>
@@ -137,12 +200,16 @@ interface HomeViewProps {
   allUserTasks: ToDoTask[];
   allStudySessions: StudySession[];
   allUserFlashcardSets: FlashcardSet[];
+  allUserNotes: Note[];
+  userStudyPlans: StudyPlan[];
   recentFiles: FileData[];
   setCurrentView: (view: string) => void;
   currentTime: Date;
+  onActivityClick: (type: string, context: any) => void;
 }
 
-const HomeView: React.FC<HomeViewProps> = ({ user, t, getThemeClasses, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView, currentTime }) => {
+const HomeView: React.FC<HomeViewProps> = (props) => {
+    const { user, t, getThemeClasses, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView, currentTime, onActivityClick, allUserNotes, userStudyPlans } = props;
     const userFirstName = user.userName?.split(' ')[0] || '';
     const today = new Date();
 
@@ -189,7 +256,7 @@ const HomeView: React.FC<HomeViewProps> = ({ user, t, getThemeClasses, allEvents
 
     const widgetComponents: { [key: string]: React.ReactNode } = {
         agenda: <TodaysAgenda key="agenda" events={todaysEvents} t={t} getThemeClasses={getThemeClasses} onNavigate={() => setCurrentView('calendar')} currentTime={currentTime} />,
-        files: <RecentFiles key="files" files={recentFiles} t={t} />,
+        files: <RecentActivities key="files" files={recentFiles} notes={allUserNotes} plans={userStudyPlans} sets={allUserFlashcardSets} t={t} onActivityClick={onActivityClick} getThemeClasses={getThemeClasses} language={language} />,
     };
 
     const homeLayout = user.homeLayout || defaultHomeLayout;

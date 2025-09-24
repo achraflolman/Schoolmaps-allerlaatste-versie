@@ -1,6 +1,3 @@
-
-
-
 import React, { useState } from 'react';
 import { ChevronLeft, Share2, PlusCircle, Trash2, Link, Search, XCircle, LoaderCircle } from 'lucide-react';
 import { db, storage, appId, Timestamp } from '../../services/firebase';
@@ -11,7 +8,7 @@ interface SubjectViewProps {
     currentSubject: string;
     subjectFiles: FileData[];
     setCurrentSubject: (subject: string | null) => void;
-    t: (key: string, replacements?: { [key: string]: string | number }) => string;
+    t: (key: string, replacements?: { [key: string]: string | number }) => void;
     tSubject: (key: string) => string;
     getThemeClasses: (variant: string) => string;
     showAppModal: (content: ModalContent) => void;
@@ -107,12 +104,12 @@ const SubjectView: React.FC<SubjectViewProps> = ({ user, currentSubject, subject
 
     return (
         <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-center flex-wrap gap-2">
-                <button onClick={() => setCurrentSubject(null)} className="flex items-center bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-lg transition-colors active:scale-95">
-                    <ChevronLeft className="w-4 h-4 mr-2" /> {t('back_to_subjects')}
+            <div className="flex items-center gap-2 w-full">
+                <button onClick={() => setCurrentSubject(null)} title={t('back_to_subjects')} className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-800 transition-colors active:scale-95 flex-shrink-0">
+                    <ChevronLeft className="w-5 h-5" />
                 </button>
-                <h2 className={`text-2xl font-bold ${getThemeClasses('text-strong')}`}>{tSubject(currentSubject)}</h2>
-                 <button onClick={() => copyTextToClipboard(window.location.href, tSubject(currentSubject))} className={`flex items-center text-white font-semibold py-2 px-4 rounded-lg transition-colors active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}>
+                <h2 className={`text-2xl font-bold text-center flex-grow ${getThemeClasses('text-strong')}`}>{tSubject(currentSubject)}</h2>
+                 <button onClick={() => copyTextToClipboard(window.location.href, tSubject(currentSubject))} className={`flex items-center text-white font-semibold py-2 px-4 rounded-lg transition-colors active:scale-95 ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} flex-shrink-0`}>
                     <Share2 className="w-4 h-4 mr-2" /> {t('share_button')}
                 </button>
             </div>

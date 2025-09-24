@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { AppUser, ModalContent } from '../../types';
 import { auth } from '../../services/firebase';
@@ -51,10 +52,12 @@ const SortableItem = React.memo(({ id, t }: { id: string, t: any }) => {
 });
 
 // FIX: Refactored component to use React.FC for better type safety with children, resolving TS errors.
+// FIX: Added `children` to props to resolve TypeScript errors.
 const SettingSection: React.FC<{
     title: string;
     icon: React.ReactNode;
     getThemeClasses: (variant: string) => string;
+    children: React.ReactNode;
 }> = ({ title, children, icon, getThemeClasses }) => (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md animate-fade-in">
         <h3 className={`text-xl font-bold mb-4 flex items-center gap-2 ${getThemeClasses('text')}`}>

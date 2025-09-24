@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { db, appId, Timestamp } from '../../../services/firebase';
 import type { Note, AppUser, ModalContent } from '../../../types';
@@ -11,6 +12,7 @@ interface NotesViewProps {
   tSubject: (key: string) => string;
   getThemeClasses: (variant: string) => string;
   showAppModal: (content: ModalContent) => void;
+  initialContext?: { note: Note };
 }
 
 const CustomDropdown: React.FC<{
@@ -65,10 +67,10 @@ const CustomDropdown: React.FC<{
 };
 
 
-const NotesView: React.FC<NotesViewProps> = ({ userId, user, t, tSubject, getThemeClasses, showAppModal }) => {
+const NotesView: React.FC<NotesViewProps> = ({ userId, user, t, tSubject, getThemeClasses, showAppModal, initialContext }) => {
   const [notes, setNotes] = useState<Note[]>([]);
-  const [filterSubject, setFilterSubject] = useState('all');
-  const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [filterSubject, setFilterSubject] = useState(initialContext?.note?.subject || 'all');
+  const [editingNote, setEditingNote] = useState<Note | null>(initialContext?.note || null);
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
@@ -180,7 +182,7 @@ const NotesView: React.FC<NotesViewProps> = ({ userId, user, t, tSubject, getThe
         
         {(isAdding || editingNote) && (
           <div className="bg-white p-4 rounded-lg shadow-md space-y-3 animate-fade-in">
-            <h3 className="font-bold text-lg">{editingNote ? t('edit_event') : t('add_note_button')}</h3>
+            <h3 className="font-bold text-lg">{editingNote ? t('edit_note') : t('add_note_button')}</h3>
             <input type="text" value={editingNote ? editingNote.title : newTitle} onChange={e => editingNote ? setEditingNote({...editingNote, title: e.target.value}) : setNewTitle(e.target.value)} placeholder={t('add_note_title_placeholder')} className="w-full p-2 border rounded-lg"/>
             <textarea value={editingNote ? editingNote.content : newContent} onChange={e => editingNote ? setEditingNote({...editingNote, content: e.target.value}) : setNewContent(e.target.value)} placeholder={t('add_note_content_placeholder')} rows={5} className="w-full p-2 border rounded-lg"/>
             <div className="flex justify-end gap-2">

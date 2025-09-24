@@ -1,4 +1,5 @@
 
+
 import type { FirebaseTimestamp } from './services/firebase';
 
 export interface Flashcard {
@@ -113,13 +114,14 @@ export interface Notification {
     id: string;
     title: string;
     text: string;
-    type: 'admin' | 'streak' | 'feedback_reply' | 'flashcard_share' | 'system';
+    type: 'admin' | 'streak' | 'feedback_reply' | 'flashcard_share' | 'plan_share' | 'system';
     read: boolean;
     createdAt: FirebaseTimestamp;
     broadcastId?: string;
     feedbackId?: string;
     flashcardSetId?: string;
     subject?: string;
+    planId?: string;
 }
 
 export interface BroadcastData {
@@ -195,6 +197,8 @@ export interface StudyPlan {
     subjects: StudyPlanSubject[];
     schedule: StudyScheduleItem[];
     createdAt: FirebaseTimestamp;
+    isShared?: boolean;
+    sharerName?: string;
 }
 
 export interface StudySession {

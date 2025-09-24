@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 
@@ -101,6 +102,22 @@ const MainAppLayout: React.FC<{
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const sidebarRef = useRef<HTMLDivElement>(null);
+    const [initialTool, setInitialTool] = useState<string | null>(null);
+    const [initialToolContext, setInitialToolContext] = useState<any>(null);
+
+    const handleActivityClick = (type: string, context: any) => {
+        if (type === 'plan') {
+            setCurrentView('planner');
+        } else if (type === 'note') {
+            setInitialTool('notes');
+            setInitialToolContext(context);
+            setCurrentView('tools');
+        } else if (type === 'set') {
+            setInitialTool('flashcards');
+            setInitialToolContext(context);
+            setCurrentView('tools');
+        }
+    };
 
     // Sidebar Click-outside Handler remains here as it's UI-specific to the layout
     useEffect(() => {
@@ -118,11 +135,11 @@ const MainAppLayout: React.FC<{
         };
     }, [isSidebarOpen]);
 
-    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents: allEvents, allUserFiles, allUserNotes, allUserFlashcardSets, onProfileUpdate, allUserTasks, allStudySessions };
+    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents: allEvents, allUserFiles, allUserNotes, allUserFlashcardSets, onProfileUpdate, allUserTasks, allStudySessions, initialTool, initialContext: initialToolContext, onToolSelected: () => { setInitialTool(null); setInitialToolContext(null); } };
 
     const mainContent = (
         <div>
-            {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, tSubject, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView, currentTime }} />}
+            {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, allEvents, language, allUserTasks, allStudySessions, recentFiles, setCurrentView, currentTime, onActivityClick: handleActivityClick, allUserNotes, allUserFlashcardSets, userStudyPlans }} />}
             {currentView === 'home' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
             
             {currentView === 'files' && !currentSubject && <SubjectSelectionView {...{ user, t, tSubject, getThemeClasses, setCurrentSubject }} />}
