@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 
 import { auth, db, appId, storage, EmailAuthProvider, Timestamp, arrayUnion, increment } from '../../services/firebase';
 import { translations, subjectDisplayTranslations, defaultHomeLayout } from '../../constants';
-import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan, StudySession, SyncedCalendar } from '../../types';
+import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan, StudySession, SyncedCalendar, ChatMessage } from '../../types';
 
 import CustomModal from '../ui/Modal';
 import BroadcastModal from '../new/BroadcastModal';
@@ -22,6 +23,7 @@ import StudyPlannerView from './StudyPlannerView';
 import AIChatView from './AIChatView';
 import AISetupView from './AISetupView';
 import SubjectSelectionView from './SubjectSelectionView';
+import { Chat } from '@google/genai';
 
 const MainAppLayout: React.FC<{
     user: AppUser;
@@ -81,15 +83,19 @@ const MainAppLayout: React.FC<{
     setSelectedTaskForTimer: (t: ToDoTask | null) => void;
     addCalendarEvent: (eventData: Omit<CalendarEvent, 'id' | 'ownerId' | 'createdAt'>) => Promise<string>;
     removeCalendarEvent: (title: string, date: string) => Promise<string>;
-    // FIX: Add missing currentTime prop to fix type errors in HomeView and CalendarView.
     currentTime: Date;
+    // AI Chat Props
+    aiChat: Chat | null;
+    aiChatMessages: ChatMessage[];
+    setAiChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+    resetAIChat: () => void;
 }> = ({
     user, t, tSubject, getThemeClasses, showAppModal, copyTextToClipboard, setIsAvatarModalOpen,
     handleLogout, currentView, setCurrentView, currentSubject, setCurrentSubject, handleGoHome,
     subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions,
     language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, closeAppModal, notifications, unreadCount, showBroadcast,
     focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, addCalendarEvent, removeCalendarEvent,
-    currentTime
+    currentTime, aiChat, aiChatMessages, setAiChatMessages, resetAIChat
 }) => {
     
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -112,18 +118,16 @@ const MainAppLayout: React.FC<{
         };
     }, [isSidebarOpen]);
 
-    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents: allEvents, allUserFiles, allUserNotes, allUserFlashcardSets, onProfileUpdate };
+    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents: allEvents, allUserFiles, allUserNotes, allUserFlashcardSets, onProfileUpdate, allUserTasks, allStudySessions };
 
     const mainContent = (
         <div>
-            {/* FIX: Pass `currentTime` prop to HomeView. */}
             {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, tSubject, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView, currentTime }} />}
             {currentView === 'home' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
             
             {currentView === 'files' && !currentSubject && <SubjectSelectionView {...{ user, t, tSubject, getThemeClasses, setCurrentSubject }} />}
             {currentView === 'files' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
 
-            {/* FIX: Pass `currentTime` prop to CalendarView. */}
             {currentView === 'calendar' && <CalendarView {...{ allEvents, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user, onProfileUpdate, currentTime }} />}
             {currentView === 'planner' && <StudyPlannerView {...{ userStudyPlans, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user, allEvents }} />}
             {currentView === 'tools' && <ToolsView {...toolsViewProps} />}
@@ -190,13 +194,19 @@ const MainAppLayout: React.FC<{
                     t={t}
                     getThemeClasses={getThemeClasses}
                     showAppModal={showAppModal}
-                    onClose={() => setIsChatOpen(false)}
+                    onClose={() => {
+                        setIsChatOpen(false);
+                        resetAIChat();
+                    }}
                     addCalendarEvent={addCalendarEvent}
                     removeCalendarEvent={removeCalendarEvent}
                     tSubject={tSubject}
                     userEvents={allEvents}
                     onProfileUpdate={onProfileUpdate}
                     userStudyPlans={userStudyPlans}
+                    chat={aiChat}
+                    messages={aiChatMessages}
+                    setMessages={setAiChatMessages}
                 />
             )}
         </div>

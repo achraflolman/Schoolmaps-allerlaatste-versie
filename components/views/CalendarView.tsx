@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, PlusCircle, Edit, Trash2, Loader2, Sparkles, Download, RefreshCw, Link, Trash, Briefcase, School, BookOpen, FileText, Presentation, Mic, ClipboardList, Clock } from 'lucide-react';
 import { db, appId, Timestamp } from '../../services/firebase';
@@ -519,7 +520,6 @@ const WeekGridView: React.FC<Omit<CalendarViewProps, 'allEvents' | 'onProfileUpd
     eventsForWeek: CalendarEvent[];
     onEventClick: (event: CalendarEvent) => void;
     onGridCellClick: (date: Date) => void;
-    // FIX: Add isEventInProgress to props to receive it from parent
     isEventInProgress: (event: CalendarEvent) => boolean;
 }> = ({
     weekDays, eventsForWeek, t, getThemeClasses, tSubject, language, onEventClick, onGridCellClick, currentTime, isEventInProgress
@@ -698,6 +698,7 @@ const EventModal: React.FC<{
                         <option value="oral">{t('event_oral')}</option>
                          <option value="work">{t('event_work')}</option>
                         <option value="school">{t('event_school')}</option>
+                        <option value="study_plan">{t('event_study_plan')}</option>
                     </select>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
@@ -804,7 +805,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ allEvents, t, getThemeClass
         }, {} as Record<string, CalendarEvent[]>);
     }, [allEvents]);
 
-    // FIX: Moved `isEventInProgress` to parent scope to be accessible by both week and list views.
     const isEventInProgress = (event: CalendarEvent): boolean => {
         const start = (event.start as any).toDate();
         const end = (event.end as any).toDate();
@@ -843,7 +843,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ allEvents, t, getThemeClass
             
             <div className="flex-grow min-h-0">
                 {viewMode === 'week' ? (
-                    // FIX: Pass missing props (`user`, `userId`, `showAppModal`, `isEventInProgress`) to WeekGridView.
                     <WeekGridView 
                         user={user} 
                         userId={userId} 
@@ -872,7 +871,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ allEvents, t, getThemeClass
                                             </div>
                                             <div className="flex-grow">
                                                 <div className="flex items-center gap-2">
-                                                    {/* FIX: Use the `isEventInProgress` function defined in the parent scope. */}
                                                     {isEventInProgress(event) && <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full animate-pulse">{t('in_progress_badge')}</span>}
                                                     <p className="font-semibold">{event.title}</p>
                                                 </div>

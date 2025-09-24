@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { AppUser, ModalContent } from '../../types';
 import { auth } from '../../services/firebase';
@@ -47,6 +49,23 @@ const SortableItem = React.memo(({ id, t }: { id: string, t: any }) => {
         </div>
     );
 });
+
+// FIX: Refactored component to use React.FC for better type safety with children, resolving TS errors.
+const SettingSection: React.FC<{
+    title: string;
+    icon: React.ReactNode;
+    getThemeClasses: (variant: string) => string;
+}> = ({ title, children, icon, getThemeClasses }) => (
+    <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md animate-fade-in">
+        <h3 className={`text-xl font-bold mb-4 flex items-center gap-2 ${getThemeClasses('text')}`}>
+            {icon}
+            {title}
+        </h3>
+        <div className="space-y-4">
+            {children}
+        </div>
+    </div>
+);
 
 
 const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, showAppModal, tSubject, setCurrentView, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, setIsAvatarModalOpen }) => {
@@ -196,18 +215,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
     onProfileUpdate({ notificationsEnabled: enabled });
   }
 
-  const SettingSection = ({ title, children, icon }: { title: string, children: React.ReactNode, icon: React.ReactNode }) => (
-      <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md animate-fade-in">
-          <h3 className={`text-xl font-bold mb-4 flex items-center gap-2 ${getThemeClasses('text')}`}>
-              {icon}
-              {title}
-          </h3>
-          <div className="space-y-4">
-              {children}
-          </div>
-      </div>
-  );
-
   return (
     <div className="space-y-6">
       <h2 className={`text-3xl font-bold text-center ${getThemeClasses('text-strong')}`}>{t('settings_title')}</h2>
@@ -221,7 +228,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
       
       {activeTab === 'account' && (
         <div className="space-y-6">
-            <SettingSection title={t('profile_section')} icon={<User className={getThemeClasses('text')} />}>
+            <SettingSection title={t('profile_section')} icon={<User className={getThemeClasses('text')} />} getThemeClasses={getThemeClasses}>
                 <div className="flex flex-col sm:flex-row items-center gap-4">
                     <div className="flex-shrink-0">
                         <p className="font-semibold text-sm mb-2 text-center">{t('profile_picture_current')}</p>
@@ -291,8 +298,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
       )}
 
       {activeTab === 'appearance' && (
-        <>
-            <SettingSection title={t('settings_appearance_section')} icon={<Palette className={getThemeClasses('text')} />}>
+        <div className="space-y-6">
+            <SettingSection title={t('settings_appearance_section')} icon={<Palette className={getThemeClasses('text')} />} getThemeClasses={getThemeClasses}>
                 <div>
                     <p className="font-semibold">{t('choose_theme')}</p>
                     <div className="flex flex-wrap gap-3 mt-2">
@@ -333,36 +340,38 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
                         </div>
                     </div>
                 </div>
-            </SettingSection>
-            <SettingSection title={t('home_layout_title')} icon={<Palette className={getThemeClasses('text')} />}>
-                <p className="text-sm text-gray-600">{t('home_layout_description')}</p>
-                <div className={`p-2 rounded-lg ${getThemeClasses('bg-light')}`}>
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                        <SortableContext items={homeLayout} strategy={verticalListSortingStrategy}>
-                            <div className="space-y-2">
-                            {homeLayout.map(id => <SortableItem key={id} id={id} t={t}/>)}
-                            </div>
-                        </SortableContext>
-                    </DndContext>
+                <div className='pt-4 border-t'>
+                    <h4 className="font-bold mb-2">{t('home_layout_title')}</h4>
+                    <p className="text-sm text-gray-600">{t('home_layout_description')}</p>
+                    <div className={`p-2 mt-2 rounded-lg ${getThemeClasses('bg-light')}`}>
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                            <SortableContext items={homeLayout} strategy={verticalListSortingStrategy}>
+                                <div className="space-y-2">
+                                {homeLayout.map(id => <SortableItem key={id} id={id} t={t}/>)}
+                                </div>
+                            </SortableContext>
+                        </DndContext>
+                    </div>
+                </div>
+                <div className='pt-4 border-t'>
+                     <h4 className="font-bold mb-2">{t('notifications_settings_title')}</h4>
+                     <div className="flex items-center justify-between">
+                        <label htmlFor="notif-toggle" className="font-semibold text-gray-700">{t('enable_notifications')}</label>
+                        <button
+                            id="notif-toggle"
+                            onClick={() => handleNotificationToggle(!notificationsEnabled)}
+                            className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${notificationsEnabled ? getThemeClasses('bg') : 'bg-gray-300'}`}
+                            >
+                            <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${notificationsEnabled ? 'translate-x-6' : 'translate-x-1'}`}/>
+                        </button>
+                    </div>
                 </div>
             </SettingSection>
-            <SettingSection title={t('notifications_settings_title')} icon={<Bell className={getThemeClasses('text')} />}>
-                 <div className="flex items-center justify-between">
-                    <label htmlFor="notif-toggle" className="font-semibold text-gray-700">{t('enable_notifications')}</label>
-                    <button
-                        id="notif-toggle"
-                        onClick={() => handleNotificationToggle(!notificationsEnabled)}
-                        className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${notificationsEnabled ? getThemeClasses('bg') : 'bg-gray-300'}`}
-                        >
-                        <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${notificationsEnabled ? 'translate-x-6' : 'translate-x-1'}`}/>
-                    </button>
-                </div>
-            </SettingSection>
-        </>
+        </div>
       )}
 
-       {activeTab === 'privacy' && (
-        <SettingSection title={t('settings_privacy_section')} icon={<Shield className={getThemeClasses('text')} />}>
+      {activeTab === 'privacy' && (
+        <SettingSection title={t('settings_privacy_section')} icon={<Shield className={getThemeClasses('text')} />} getThemeClasses={getThemeClasses}>
             <div className="text-gray-700 space-y-2">
                 <p>{t('privacy_policy_content')}</p>
             </div>
@@ -370,7 +379,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
       )}
 
       {activeTab === 'help' && (
-          <SettingSection title={t('settings_help_info_section')} icon={<HelpCircle className={getThemeClasses('text')}/>}>
+          <SettingSection title={t('settings_help_info_section')} icon={<HelpCircle className={getThemeClasses('text')}/>} getThemeClasses={getThemeClasses}>
               <button onClick={() => setCurrentView('appInfo')} className="w-full text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg font-semibold flex items-center gap-2 transition-colors">
                   <Info className="w-5 h-5"/> {t('app_info')}
               </button>

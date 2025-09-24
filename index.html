@@ -2,6 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- This viewport tag is crucial for responsive design and auto-scaling on mobile devices. -->
+    <!-- It tells the browser to set the width of the page to the screen-width of the device, and the initial zoom level. This is the foundation of auto-scaling for mobile. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StudyBox</title>
 
@@ -46,9 +48,10 @@
 
     <!-- Auto-scaling & Fluid Typography -->
     <style>
+      /* This CSS rule makes the app's font size responsive, which helps the entire layout scale smoothly */
+      /* across different screen sizes, from small phones to large desktops, as requested. */
+      /* Combined with the viewport meta tag, this ensures the app auto-scales correctly on all devices. */
       html {
-        /* This makes the base font size responsive, so all rem units in Tailwind scale smoothly. */
-        /* It scales from a smaller base on mobile up to 16px on desktop. */
         font-size: clamp(13.5px, 0.84375rem + 0.25vw, 16px);
       }
     </style>

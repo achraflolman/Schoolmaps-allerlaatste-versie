@@ -1,7 +1,7 @@
 
 
 import React from 'react';
-import { Book, CalendarDays, Settings, X, BrainCircuit, BarChart3, Bell, Flame, LifeBuoy, Edit, ClipboardList, Bot, Files } from 'lucide-react';
+import { Book, CalendarDays, Settings, X, BrainCircuit, BarChart3, Bell, Flame, LifeBuoy, Edit, ClipboardList, Bot, Files, Star } from 'lucide-react';
 import type { AppUser } from '../../types';
 
 interface SidebarProps {
@@ -47,6 +47,13 @@ const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen
         <style>{`
             .sidebar-scroll::-webkit-scrollbar { display: none; }
             .sidebar-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+            @keyframes gentle-pulse {
+                0%, 100% { transform: scale(1); opacity: 0.8; }
+                50% { transform: scale(1.1); opacity: 1; }
+            }
+            .animate-gentle-pulse {
+                animation: gentle-pulse 2.5s infinite ease-in-out;
+            }
         `}</style>
         <button
           type="button"
@@ -71,12 +78,20 @@ const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen
               </div>
             </button>
             <p className={`mt-4 text-xl font-bold ${getThemeClasses('text-strong')}`}>{t('welcome_message', { name: userFirstName })}</p>
-            {user.streakCount && user.streakCount > 0 && (
-                <div className="flex items-center gap-1.5 mt-1 bg-orange-100 text-orange-600 font-bold text-sm py-1 px-3 rounded-full">
-                    <Flame className="w-4 h-4" />
-                    <span>{t('streak_days', {count: user.streakCount})}</span>
-                </div>
-            )}
+            <div className="flex items-center gap-2 mt-1">
+                {user.streakCount && user.streakCount > 0 && (
+                    <div className="flex items-center gap-1.5 bg-orange-100 text-orange-600 font-bold text-sm py-1 px-3 rounded-full animate-gentle-pulse">
+                        <Flame className="w-4 h-4" />
+                        <span>{user.streakCount}</span>
+                    </div>
+                )}
+                {(user.totalStars ?? 0) > 0 && (
+                    <div className="flex items-center gap-1.5 bg-yellow-100 text-yellow-700 font-bold text-sm py-1 px-3 rounded-full animate-gentle-pulse" style={{ animationDelay: '0.5s' }}>
+                        <Star className="w-4 h-4 fill-current" />
+                        <span>{user.totalStars}</span>
+                    </div>
+                )}
+            </div>
             <p className="text-sm text-gray-600 mt-1">{user.className} {user.educationLevel?.toUpperCase()}</p>
             <p className="text-xs text-gray-500 break-all w-full px-2">{user.email}</p>
           </div>

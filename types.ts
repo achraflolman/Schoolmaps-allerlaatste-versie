@@ -1,3 +1,4 @@
+
 import type { FirebaseTimestamp } from './services/firebase';
 
 export interface Flashcard {
@@ -11,6 +12,25 @@ export interface Flashcard {
     interval?: number;
     easeFactor?: number;
 }
+
+export interface SessionAnswer {
+  card: Flashcard;
+  userAnswer?: string; // For vocabulary mode
+  isCorrect: boolean;
+}
+
+export interface SessionSummary {
+  stats: {
+    correct: number;
+    incorrect: number;
+    total: number;
+    startTime: number; // timestamp
+    endTime: number; // timestamp
+  };
+  answers: SessionAnswer[];
+  earnedStars: number;
+}
+
 
 export interface SyncedCalendar {
     id: string;
@@ -48,6 +68,7 @@ export interface AppUser {
     aiBotName: string;
     aiBotAvatarUrl: string | null;
     hasCompletedOnboarding: boolean;
+    totalStars?: number;
     goals?: string[];
     syncedCalendars?: SyncedCalendar[];
 }
@@ -146,6 +167,10 @@ export interface FlashcardSet {
     cardCount: number;
     isShared?: boolean;
     sharerName?: string;
+    // For combined sets feature
+    isCombined?: boolean;
+    combinedFrom?: string[];
+    cards?: Flashcard[]; // For temporary in-memory combined sets
 }
 
 export interface StudyPlanSubject {
@@ -197,4 +222,9 @@ export interface Feedback {
     status: 'new' | 'replied';
     createdAt: FirebaseTimestamp;
     replies: FeedbackReply[];
+}
+
+export interface ChatMessage {
+    role: 'user' | 'model';
+    text: string;
 }

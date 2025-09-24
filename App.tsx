@@ -1,11 +1,13 @@
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
+import { GoogleGenAI, Chat, FunctionDeclaration, Tool, Type } from '@google/genai';
 
 import { auth, db, appId, storage, EmailAuthProvider, Timestamp, arrayUnion, increment } from './services/firebase';
 import { translations, subjectDisplayTranslations, defaultHomeLayout } from './constants';
-import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan, StudySession, SyncedCalendar } from './types';
+import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan, StudySession, SyncedCalendar, ChatMessage } from './types';
 
 import CustomModal from './components/ui/Modal';
 import BroadcastModal from './components/new/BroadcastModal';
@@ -34,6 +36,7 @@ import StudyPlannerView from './components/views/StudyPlannerView';
 import AIChatView from './components/views/AIChatView';
 import AISetupView from './components/views/AISetupView';
 import SubjectSelectionView from './components/views/SubjectSelectionView';
+import MainAppLayout from './components/views/MainAppLayout';
 
 
 type AppStatus = 'initializing' | 'unauthenticated' | 'authenticated' | 'awaiting-verification';
@@ -117,185 +120,6 @@ const LoadingScreen: React.FC<{ getThemeClasses: (variant: string) => string; la
     );
 };
 
-
-// --- Main App Layout for Authenticated Users (Now largely stateless) ---
-const MainAppLayout: React.FC<{
-    user: AppUser;
-    t: (key: string, replacements?: any) => string;
-    tSubject: (key: string) => string;
-    getThemeClasses: (variant: string) => string;
-    showAppModal: (content: ModalContent) => void;
-    closeAppModal: () => void;
-    copyTextToClipboard: (text: string, title?: string) => boolean;
-    setIsAvatarModalOpen: (isOpen: boolean) => void;
-    handleLogout: () => void;
-    // Navigation state and handlers
-    currentView: string;
-    setCurrentView: (view: string) => void;
-    currentSubject: string | null;
-    setCurrentSubject: (subject: string | null) => void;
-    handleGoHome: () => void;
-    // Data for views
-    subjectFiles: FileData[];
-    searchQuery: string;
-    setSearchQuery: (query: string) => void;
-    allEvents: CalendarEvent[];
-    userStudyPlans: StudyPlan[];
-    recentFiles: FileData[];
-    allUserFiles: FileData[];
-    allUserNotes: Note[];
-    allUserFlashcardSets: FlashcardSet[];
-    allUserTasks: ToDoTask[];
-    allStudySessions: StudySession[];
-    // Props for SettingsView
-    language: 'nl' | 'en';
-    setLanguage: (lang: 'nl' | 'en') => void;
-    themeColor: string;
-    setThemeColor: (color: string) => void;
-    fontFamily: string;
-    setFontFamily: (font: string) => void;
-    onProfileUpdate: (updatedData: Partial<AppUser>) => Promise<void>;
-    onDeleteAccountRequest: () => void;
-    onCleanupAccountRequest: () => void;
-    onClearCalendarRequest: () => void;
-    // Notifications
-    notifications: Notification[];
-    unreadCount: number;
-    showBroadcast: (broadcastId: string) => void;
-    // Persistent Timer Props
-    focusMinutes: number;
-    setFocusMinutes: (m: number) => void;
-    breakMinutes: number;
-    setBreakMinutes: (m: number) => void;
-    timerMode: 'focus' | 'break';
-    setTimerMode: (m: 'focus' | 'break') => void;
-    timeLeft: number;
-    setTimeLeft: (s: number) => void;
-    isTimerActive: boolean;
-    setIsTimerActive: (a: boolean) => void;
-    selectedTaskForTimer: ToDoTask | null;
-    setSelectedTaskForTimer: (t: ToDoTask | null) => void;
-    addCalendarEvent: (eventData: Omit<CalendarEvent, 'id' | 'ownerId' | 'createdAt'>) => Promise<string>;
-    removeCalendarEvent: (title: string, date: string) => Promise<string>;
-    currentTime: Date;
-}> = ({
-    user, t, tSubject, getThemeClasses, showAppModal, copyTextToClipboard, setIsAvatarModalOpen,
-    handleLogout, currentView, setCurrentView, currentSubject, setCurrentSubject, handleGoHome,
-    subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions,
-    language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, closeAppModal, notifications, unreadCount, showBroadcast,
-    focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, addCalendarEvent, removeCalendarEvent,
-    currentTime
-}) => {
-    
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const [isChatOpen, setIsChatOpen] = useState(false);
-    const sidebarRef = useRef<HTMLDivElement>(null);
-
-    // Sidebar Click-outside Handler remains here as it's UI-specific to the layout
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (sidebarRef.current && !sidebarRef.current.contains(event.target as Node) && isSidebarOpen) {
-                 const hamburgerButton = document.getElementById('hamburger-menu');
-                 if(hamburgerButton && !hamburgerButton.contains(event.target as Node)) {
-                    setIsSidebarOpen(false);
-                 }
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [isSidebarOpen]);
-
-    // FIX: Pass `onProfileUpdate` to `toolsViewProps` to satisfy the `ToolsViewProps` interface.
-    const toolsViewProps = { t, getThemeClasses, showAppModal, closeAppModal, userId: user.uid, user, tSubject, copyTextToClipboard, focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, userEvents: allEvents, allUserFiles, allUserNotes, allUserFlashcardSets, onProfileUpdate };
-
-    const mainContent = (
-        <div>
-            {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, tSubject, allEvents, language, allUserTasks, allStudySessions, allUserFlashcardSets, recentFiles, setCurrentView, currentTime }} />}
-            {currentView === 'home' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
-            
-            {currentView === 'files' && !currentSubject && <SubjectSelectionView {...{ user, t, tSubject, getThemeClasses, setCurrentSubject }} />}
-            {currentView === 'files' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
-
-            {currentView === 'calendar' && <CalendarView {...{ allEvents, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user, onProfileUpdate, currentTime }} />}
-            {currentView === 'planner' && <StudyPlannerView {...{ allEvents, userStudyPlans, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user }} />}
-            {currentView === 'tools' && <ToolsView {...toolsViewProps} />}
-            {currentView === 'settings' && <SettingsView {...{ user, t, getThemeClasses, language, setLanguage, themeColor, setThemeColor, showAppModal, tSubject, setCurrentView, onProfileUpdate, fontFamily, setFontFamily, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, setIsAvatarModalOpen }} />}
-            {currentView === 'notifications' && <NotificationsView {...{ user, t, getThemeClasses, notifications, setCurrentView, onProfileUpdate, showBroadcast, showAppModal }} />}
-            {currentView === 'feedback' && <FeedbackView {...{ user, t, getThemeClasses, setCurrentView }} />}
-            {currentView === 'appInfo' && <InfoView {...{ t, getThemeClasses, setCurrentView }} />}
-            {currentView === 'faq' && <FaqView {...{ t, getThemeClasses, setCurrentView }} />}
-        </div>
-    );
-    
-    return (
-        <div className={'flex h-screen w-full'}>
-             <Sidebar {...{ user, isSidebarOpen, setIsSidebarOpen, sidebarRef, t, getThemeClasses, setCurrentView, currentView, currentSubject, setIsAvatarModalOpen }} />
-            <main className="flex-1 flex flex-col overflow-y-auto bg-slate-50">
-               <header className="p-4 sticky top-0 bg-white/80 backdrop-blur-lg z-30 border-b border-gray-200">
-                    <div className="flex items-center justify-between">
-                        <button type="button" id="hamburger-menu" onClick={() => setIsSidebarOpen(true)} className={`p-2 rounded-lg text-white ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} transition-transform duration-200 active:scale-90`}>
-                            <Menu className="w-6 h-6" />
-                        </button>
-                         <h1 onClick={handleGoHome} className={`text-xl sm:text-2xl font-bold ${getThemeClasses('text-logo')} cursor-pointer transition-transform hover:scale-105 active:scale-100`}>
-                            StudyBox
-                         </h1>
-                        <div className="flex items-center gap-2">
-                           {isTimerActive && (
-                                <button type="button" onClick={() => setCurrentView('tools')} className={`p-2 rounded-lg font-mono text-sm font-bold ${getThemeClasses('text')} bg-gray-100 hover:bg-gray-200`}>
-                                    {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
-                                </button>
-                           )}
-                           <button type="button" onClick={() => setCurrentView('notifications')} title={t('notifications_title')} className="relative p-2 rounded-lg text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors duration-200 active:scale-90">
-                                <Bell className="w-6 h-6" />
-                                {unreadCount > 0 && (
-                                    <span className={`absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white ${getThemeClasses('bg')} transform translate-x-1/4 -translate-y-1/4`}>
-                                        {unreadCount > 9 ? '9+' : unreadCount}
-                                    </span>
-                                )}
-                           </button>
-                           <button type="button" onClick={handleLogout} title={t('logout_button')} className="p-2 rounded-lg text-red-500 bg-red-100 hover:bg-red-200 transition-colors duration-200 active:scale-90">
-                                <LogOut className="w-6 h-6" />
-                           </button>
-                        </div>
-                    </div>
-               </header>
-                <div className="flex-1 p-[clamp(1rem,2vw+0.5rem,2rem)] relative">
-                    <div className="max-w-7xl mx-auto">
-                        {mainContent}
-                    </div>
-                </div>
-            </main>
-            
-            {!isChatOpen && (
-                <button
-                    onClick={() => setIsChatOpen(true)}
-                    className={`fixed bottom-6 right-6 z-40 p-4 rounded-full text-white shadow-lg transform transition-all duration-300 hover:scale-110 active:scale-95 animate-bounce-in ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}
-                    title={t('ai_chat')}
-                >
-                    <Bot className="w-6 h-6" />
-                </button>
-            )}
-
-            {isChatOpen && (
-                 <AIChatView
-                    user={user}
-                    t={t}
-                    getThemeClasses={getThemeClasses}
-                    showAppModal={showAppModal}
-                    onClose={() => setIsChatOpen(false)}
-                    addCalendarEvent={addCalendarEvent}
-                    removeCalendarEvent={removeCalendarEvent}
-                    tSubject={tSubject}
-                    userEvents={allEvents}
-                    onProfileUpdate={onProfileUpdate}
-                    userStudyPlans={userStudyPlans}
-                />
-            )}
-        </div>
-    );
-};
 
 const ReauthModal: React.FC<{
     isOpen: boolean;
@@ -426,6 +250,10 @@ const App: React.FC = () => {
     const [isTimerActive, setIsTimerActive] = useState(false);
     const [selectedTaskForTimer, setSelectedTaskForTimer] = useState<ToDoTask | null>(null);
     const timerAudioRef = useRef<HTMLAudioElement | null>(null);
+
+    // Lifted AI Chat State for persistent memory
+    const [aiChat, setAiChat] = useState<Chat | null>(null);
+    const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([]);
 
     // Initial Loading states
     const [isAppReadyForDisplay, setIsAppReadyForDisplay] = useState(false);
@@ -736,7 +564,7 @@ const App: React.FC = () => {
         for (const cal of calendarsToSync) {
             try {
                 const targetUrl = cal.url.replace(/^webcal:\/\//i, 'https://');
-                const proxyUrl = `https://corsproxy.io/?${targetUrl}`;
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
                 const response = await fetch(proxyUrl);
                 if (!response.ok) throw new Error(`Failed to fetch calendar: ${response.statusText}`);
                 const icsData = await response.text();
@@ -744,7 +572,9 @@ const App: React.FC = () => {
                 allParsedEvents = [...allParsedEvents, ...parsed];
             } catch (error) {
                 console.error(`Error syncing calendar "${cal.name}":`, error);
-                showAppModal({ text: t('error_sync_calendar', { name: cal.name }) });
+                const errorTitle = t('error_sync_calendar_title');
+                const errorDesc = t('error_sync_calendar_description', { name: cal.name, error: (error as Error).message });
+                showAppModal({ text: `${errorTitle}\n\n${errorDesc}` });
             }
         }
         setSyncedEvents(allParsedEvents);
@@ -1222,6 +1052,11 @@ const App: React.FC = () => {
     }, [user?.uid]);
 
 
+    const resetAIChat = useCallback(() => {
+        setAiChat(null);
+        setAiChatMessages([]);
+    }, []);
+
     // Main authentication and profile loading effect
     useEffect(() => {
         let profileUnsubscribe: Unsubscribe | undefined;
@@ -1367,6 +1202,7 @@ const App: React.FC = () => {
                 setUser(null);
                 setIsAdmin(false);
                 setAdminSettings(null);
+                resetAIChat();
                 if (sessionStorage.getItem('logout-event') === 'true') {
                     showAppModal({ text: t('success_logout') });
                     sessionStorage.removeItem('logout-event');
@@ -1379,7 +1215,60 @@ const App: React.FC = () => {
             authSubscriber();
             if (profileUnsubscribe) profileUnsubscribe();
         };
-    }, [showAppModal, t]);
+    }, [showAppModal, t, resetAIChat]);
+
+     // Effect to initialize AI Chat
+     useEffect(() => {
+        if (user && !isAdmin && !aiChat && process.env.API_KEY) {
+            const availableSubjects = [...(user.selectedSubjects || []), ...(user.customSubjects || [])];
+
+            const addEventTool: FunctionDeclaration = {
+                name: "addCalendarEvent", description: "Adds a new event to the user's calendar. Use the current year for dates unless another year is specified. Today's date is " + new Date().toISOString().split('T')[0],
+                parameters: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, date: { type: Type.STRING }, time: { type: Type.STRING }, subject: { type: Type.STRING, description: `Must be one of: ${availableSubjects.join(', ')}` }, type: { type: Type.STRING, description: "Must be one of: 'test', 'presentation', 'homework', 'oral', 'other', 'work', 'school'." } }, required: ["title", "date", "time", "subject", "type"] }
+            };
+            const removeEventTool: FunctionDeclaration = {
+                name: "removeCalendarEvent", description: "Removes an event from the user's calendar.",
+                parameters: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, date: { type: Type.STRING } }, required: ["title", "date"] }
+            };
+            const getEventsTool: FunctionDeclaration = {
+                name: "getCalendarEvents", description: "Retrieves all calendar events for a specific date.",
+                parameters: { type: Type.OBJECT, properties: { date: { type: Type.STRING, description: "YYYY-MM-DD format" } }, required: ["date"] }
+            };
+            const getStudyPlansTool: FunctionDeclaration = { name: "getStudyPlans", description: "Retrieves an overview of all the user's study plans.", parameters: { type: Type.OBJECT, properties: {} } };
+            const getStudyPlanDetailsTool: FunctionDeclaration = {
+                name: "getStudyPlanDetails", description: "Retrieves the detailed schedule for a specific study plan by its title.",
+                parameters: { type: Type.OBJECT, properties: { title: { type: Type.STRING } }, required: ["title"] }
+            };
+
+            const tools: Tool[] = [{ functionDeclarations: [addEventTool, removeEventTool, getEventsTool, getStudyPlansTool, getStudyPlanDetailsTool] }];
+            const systemInstructionText = t('ai_system_instruction', { botName: user.aiBotName || 'AI Assistant', userName: user.userName, subjects: availableSubjects.join(', ') });
+            
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const chatInstance = ai.chats.create({ model: 'gemini-2.5-flash', config: { systemInstruction: systemInstructionText, tools: tools } });
+            setAiChat(chatInstance);
+
+            if (aiChatMessages.length === 0) {
+                const getGreeting = async () => {
+                    try {
+                        const stream = await chatInstance.sendMessageStream({ message: "Greet the user to start the conversation." });
+                        let greetingText = '';
+                        for await (const chunk of stream) {
+                            if (chunk.text) greetingText += chunk.text;
+                        }
+                        if (greetingText) {
+                            setAiChatMessages([{ role: 'model', text: greetingText }]);
+                        } else {
+                            setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome') }]);
+                        }
+                    } catch (e) {
+                        console.error("Failed to get initial greeting:", e);
+                        setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome') }]);
+                    }
+                };
+                getGreeting();
+            }
+        }
+    }, [user, isAdmin, aiChat, aiChatMessages.length, t]);
 
     // Effect to sync user preferences to app state
     useEffect(() => {
@@ -1401,7 +1290,7 @@ const App: React.FC = () => {
                 setFontFamily(adminSettings.fontPreference);
             }
         }
-    }, [user, isAdmin, adminSettings]);
+    }, [user, isAdmin, adminSettings, themeColor, language, fontFamily]);
 
     const copyTextToClipboard = useCallback((text: string, title: string = '') => {
         if (navigator.clipboard) {
@@ -1435,7 +1324,7 @@ const App: React.FC = () => {
 
     const authContainerClasses = (appStatus === 'unauthenticated' || appStatus === 'initializing' || appStatus === 'awaiting-verification' || (showIntro && !user) ) ? getAuthThemeClasses('bg') : '';
 
-    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions, addCalendarEvent: addCalendarEventFromAI, removeCalendarEvent: removeCalendarEventFromAI, currentTime };
+    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions, addCalendarEvent: addCalendarEventFromAI, removeCalendarEvent: removeCalendarEventFromAI, currentTime, aiChat, aiChatMessages, setAiChatMessages, resetAIChat };
     
     const isLoading = !isAppReadyForDisplay || !isMinLoadingTimePassed;
 
@@ -1480,7 +1369,7 @@ const App: React.FC = () => {
             
             {!isLoading && (
               <>
-                {appStatus === 'awaiting-verification' && user && (
+                {appStatus === 'awaiting-verification' && user && !verificationSkipped && (
                      <EmailVerificationView 
                         user={user}
                         t={t}
@@ -1537,7 +1426,7 @@ const App: React.FC = () => {
                         <MainAppLayout {...mainAppLayoutProps} />
                     ) : <LoadingScreen getThemeClasses={getAuthThemeClasses} language={language}/>
                 )}
-            </>
+              </>
             )}
             <OfflineIndicator isOnline={isOnline} t={t} />
         </div>

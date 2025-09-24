@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { db, appId, Timestamp } from '../../../services/firebase';
 import type { ToDoTask, AppUser, ModalContent } from '../../../types';
@@ -228,7 +229,7 @@ const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeCl
   }, [allTasks]);
 
 
-  const TaskItem = ({ task }: { task: ToDoTask }) => (
+  const TaskItem: React.FC<{ task: ToDoTask }> = ({ task }) => (
     <div className="bg-white p-3 rounded-lg shadow-sm flex items-center justify-between transition-shadow hover:shadow-md gap-2">
         <label className="flex items-center gap-3 cursor-pointer w-full">
             <input type="checkbox" checked={task.completed} onChange={() => handleToggleTask(task)} className={`form-checkbox h-5 w-5 rounded transition-colors ${getThemeClasses('text')} focus:ring-0`}/>

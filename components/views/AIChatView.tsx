@@ -1,9 +1,10 @@
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Tool, Type } from '@google/genai';
 import { Send, Loader2, Bot, User, X, Settings, Save } from 'lucide-react';
 import { Timestamp } from '../../services/firebase';
-import type { AppUser, ModalContent, CalendarEvent, StudyPlan } from '../../types';
+import type { AppUser, ModalContent, CalendarEvent, StudyPlan, ChatMessage } from '../../types';
 import AvatarSelectionGrid from '../ui/AvatarSelectionGrid';
 
 interface AIChatViewProps {
@@ -18,11 +19,9 @@ interface AIChatViewProps {
     userEvents: CalendarEvent[];
     userStudyPlans: StudyPlan[];
     onProfileUpdate: (updatedData: Partial<AppUser>) => Promise<void>;
-}
-
-interface ChatMessage {
-    role: 'user' | 'model';
-    text: string;
+    chat: Chat | null;
+    messages: ChatMessage[];
+    setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
 }
 
 const AISettingsModal: React.FC<{
@@ -91,12 +90,9 @@ const AISettingsModal: React.FC<{
 };
 
 
-const AIChatView: React.FC<AIChatViewProps> = ({ user, t, tSubject, getThemeClasses, showAppModal, onClose, addCalendarEvent, removeCalendarEvent, userEvents, userStudyPlans, onProfileUpdate }) => {
-    const [chat, setChat] = useState<Chat | null>(null);
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
+const AIChatView: React.FC<AIChatViewProps> = ({ user, t, tSubject, getThemeClasses, showAppModal, onClose, addCalendarEvent, removeCalendarEvent, userEvents, userStudyPlans, onProfileUpdate, chat, messages, setMessages }) => {
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [isInitialized, setIsInitialized] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -104,137 +100,11 @@ const AIChatView: React.FC<AIChatViewProps> = ({ user, t, tSubject, getThemeClas
     const botName = user.aiBotName || 'AI Assistent';
     const botAvatar = user.aiBotAvatarUrl || 'https://i.imgur.com/3flLpUQ.png';
     
-    const availableSubjects = [...(user.selectedSubjects || []), ...(user.customSubjects || [])];
-
     const wordCount = useMemo(() => {
         if (!inputValue) return 0;
         return inputValue.trim().split(/\s+/).filter(Boolean).length;
     }, [inputValue]);
     const isOverLimit = wordCount > 100;
-
-    useEffect(() => {
-        if (!process.env.API_KEY) {
-            console.error("Gemini API key is missing. Please set it in your environment variables.");
-            showAppModal({ text: t('error_missing_api_key') });
-            onClose();
-            return;
-        }
-
-        const addEventTool: FunctionDeclaration = {
-            name: "addCalendarEvent",
-            description: "Adds a new event to the user's calendar. Use the current year for dates unless another year is specified. Today's date is " + new Date().toISOString().split('T')[0],
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    title: { type: Type.STRING, description: "The title of the event." },
-                    date: { type: Type.STRING, description: "The date of the event in YYYY-MM-DD format." },
-                    time: { type: Type.STRING, description: "The start time of the event in HH:MM format." },
-                    subject: { type: Type.STRING, description: `The subject for the event. Must be one of: ${availableSubjects.join(', ')}` },
-                    type: { type: Type.STRING, description: "The type of event. Must be one of: 'test', 'presentation', 'homework', 'oral', 'other', 'work', 'school'." }
-                },
-                required: ["title", "date", "time", "subject", "type"]
-            }
-        };
-
-        const removeEventTool: FunctionDeclaration = {
-            name: "removeCalendarEvent",
-            description: "Removes an event from the user's calendar. Requires the exact title and date of the event.",
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    title: { type: Type.STRING, description: "The title of the event to remove." },
-                    date: { type: Type.STRING, description: "The date of the event to remove in YYYY-MM-DD format." }
-                },
-                required: ["title", "date"]
-            }
-        };
-
-        const getEventsTool: FunctionDeclaration = {
-            name: "getCalendarEvents",
-            description: "Retrieves all calendar events for a specific date to let the user know what's on their schedule.",
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    date: { type: Type.STRING, description: "The date to fetch events for, in YYYY-MM-DD format." },
-                },
-                required: ["date"]
-            }
-        };
-
-        const getStudyPlansTool: FunctionDeclaration = {
-            name: "getStudyPlans",
-            description: "Retrieves an overview of all the user's study plans.",
-            parameters: { type: Type.OBJECT, properties: {} }
-        };
-
-        const getStudyPlanDetailsTool: FunctionDeclaration = {
-            name: "getStudyPlanDetails",
-            description: "Retrieves the detailed schedule for a specific study plan, identified by its title.",
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    title: { type: Type.STRING, description: "The exact title of the study plan to retrieve." }
-                },
-                required: ["title"]
-            }
-        };
-
-        const tools: Tool[] = [{ functionDeclarations: [addEventTool, removeEventTool, getEventsTool, getStudyPlansTool, getStudyPlanDetailsTool] }];
-
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const systemInstructionText = t('ai_system_instruction', { botName, userName: user.userName, subjects: availableSubjects.join(', ') });
-            
-            const chatInstance = ai.chats.create({
-                model: 'gemini-2.5-flash',
-                config: {
-                    systemInstruction: systemInstructionText,
-                    tools: tools,
-                },
-            });
-            setChat(chatInstance);
-             
-            if (chatInstance && !isInitialized) {
-                setIsInitialized(true);
-                setIsLoading(true);
-
-                const getGreeting = async () => {
-                    try {
-                        const stream = await chatInstance.sendMessageStream({ message: "Greet the user to start the conversation." }); 
-                        let greetingText = '';
-                        let hasStarted = false;
-                        for await (const chunk of stream) {
-                            if (chunk.text) {
-                                if(!hasStarted) {
-                                    setMessages([{ role: 'model', text: '' }]);
-                                    hasStarted = true;
-                                }
-                                greetingText += chunk.text;
-                                setMessages(prev => {
-                                    const newMessages = [...prev];
-                                    newMessages[newMessages.length - 1].text = greetingText;
-                                    return newMessages;
-                                });
-                            }
-                        }
-                    } catch (e) {
-                        console.error("Failed to get initial greeting:", e);
-                        setMessages([{ role: 'model', text: t('ai_chat_welcome') }]);
-                    } finally {
-                        setIsLoading(false);
-                    }
-                };
-                getGreeting();
-            }
-
-        } catch (error) {
-            console.error("Failed to initialize AI Chat:", error);
-            showAppModal({ text: "Could not start AI Chat session." });
-        }
-        
-        inputRef.current?.focus();
-
-    }, [t, showAppModal, botName, user.userName, isInitialized, user.selectedSubjects, user.customSubjects, onClose]);
 
     useEffect(() => {
         if (chatContainerRef.current) {
