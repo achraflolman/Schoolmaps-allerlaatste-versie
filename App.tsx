@@ -1,15 +1,10 @@
-
-
-
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Tool, Type } from '@google/genai';
 
 import { auth, db, appId, storage, EmailAuthProvider, Timestamp, arrayUnion, increment } from './services/firebase';
 import { translations, subjectDisplayTranslations, defaultHomeLayout } from './constants';
-import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan, StudySession, SyncedCalendar, ChatMessage } from './types';
+import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan, StudySession, SyncedCalendar, ChatMessage, ChatHistory } from './types';
 
 import CustomModal from './components/ui/Modal';
 import BroadcastModal from './components/new/BroadcastModal';
@@ -81,43 +76,10 @@ const loadingMessagesEn = [
 
 
 // --- Loading Screen Component ---
-const LoadingScreen: React.FC<{ getThemeClasses: (variant: string) => string; language: 'nl' | 'en' }> = ({ getThemeClasses, language }) => {
-    const [messageIndex, setMessageIndex] = useState(0);
-    const messages = language === 'nl' ? loadingMessagesNl : loadingMessagesEn;
-
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setMessageIndex(prevIndex => (prevIndex + 1) % messages.length);
-        }, 2000); // Cycle message every 2 seconds
-        return () => clearInterval(interval);
-    }, [messages.length]);
-
+const LoadingScreen: React.FC<{ getThemeClasses: (variant: string) => string; }> = ({ getThemeClasses }) => {
     return (
         <div className={`fixed inset-0 flex flex-col items-center justify-center ${getThemeClasses('bg')} z-50`}>
-           <style>{`
-                @keyframes bounce-in {
-                    0% { transform: scale(0.5); opacity: 0; }
-                    60% { transform: scale(1.1); opacity: 1; }
-                    80% { transform: scale(0.95); }
-                    100% { transform: scale(1); }
-                }
-                @keyframes text-fade {
-                    0% { opacity: 0; transform: translateY(10px); }
-                    20% { opacity: 1; transform: translateY(0); }
-                    80% { opacity: 1; transform: translateY(0); }
-                    100% { opacity: 0; transform: translateY(-10px); }
-                }
-                .animate-bounce-in { animation: bounce-in 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-                .animate-text-fade { animation: text-fade 2s ease-in-out infinite; }
-            `}</style>
-           <img src="https://i.imgur.com/J9xgXED.png" alt="StudyBox Logo" className="h-auto mb-8 animate-bounce-in" style={{ maxWidth: '180px' }} />
-           <div role="status" aria-label="Loading application" className="flex flex-col items-center gap-4">
-              <svg aria-hidden="true" className="w-10 h-10 text-white animate-spin" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="rgba(255,255,255,0.3)"/>
-                <path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0492C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentColor"/>
-              </svg>
-              <p className="text-white/80 font-semibold animate-text-fade h-6">{messages[messageIndex]}</p>
-           </div>
+           <img src="https://i.imgur.com/J9xgXED.png" alt="StudyBox Logo" className="h-auto" style={{ maxWidth: '180px' }} />
        </div>
     );
 };
@@ -253,14 +215,17 @@ const App: React.FC = () => {
     const [selectedTaskForTimer, setSelectedTaskForTimer] = useState<ToDoTask | null>(null);
     const timerAudioRef = useRef<HTMLAudioElement | null>(null);
 
-    // Lifted AI Chat State for persistent memory
+    // AI Chat State
     const [aiChat, setAiChat] = useState<Chat | null>(null);
     const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([]);
+    const [chatHistories, setChatHistories] = useState<ChatHistory[]>([]);
+    const [currentChatSessionId, setCurrentChatSessionId] = useState<string | null>(null);
+
 
     // Initial Loading states
     const [isAppReadyForDisplay, setIsAppReadyForDisplay] = useState(false);
     const [isMinLoadingTimePassed, setIsMinLoadingTimePassed] = useState(false);
-
+    
     const allEvents = useMemo(() => [...userEvents, ...syncedEvents], [userEvents, syncedEvents]);
 
     // Memoized theme and translation functions
@@ -309,6 +274,16 @@ const App: React.FC = () => {
 
     const showAppModal = useCallback((content: ModalContent) => setModalContent(content), []);
     const closeAppModal = useCallback(() => setModalContent(null), []);
+    
+    // Refs for robust listeners that don't cause re-renders
+    const latestUser = useRef(user);
+    const tRef = useRef(t);
+    const tSubjectRef = useRef(tSubject);
+    
+    // Refs for robust calendar sync
+    const isSyncingCalendar = useRef(false);
+    const syncFailureCount = useRef(0);
+    const isSyncOnCooldown = useRef(false);
 
     const showBroadcastModal = useCallback(async (broadcastId: string) => {
         const broadcastDocRef = db.doc(`artifacts/${appId}/public/data/broadcasts/${broadcastId}`);
@@ -346,10 +321,13 @@ const App: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (appStatus !== 'initializing' && introChecked) {
+        if (appStatus === 'initializing') {
+            setIsAppReadyForDisplay(false);
+        } else if (introChecked) {
             setIsAppReadyForDisplay(true);
         }
     }, [appStatus, introChecked]);
+
 
     useEffect(() => {
         timerAudioRef.current = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-clear-announce-tones-2861.mp3');
@@ -553,38 +531,72 @@ const App: React.FC = () => {
     }, [tSubject]);
   
     const fetchAndParseCalendars = useCallback(async (localUser: AppUser) => {
-        if (!localUser || localUser.uid === 'guest-user') return;
-
-        const calendarsToSync = localUser.syncedCalendars?.filter(c => c.enabled);
-        if (!calendarsToSync || calendarsToSync.length === 0) {
-            setSyncedEvents([]);
+        if (!localUser || localUser.uid === 'guest-user' || isSyncingCalendar.current || isSyncOnCooldown.current) {
             return;
         }
-  
-        let allParsedEvents: CalendarEvent[] = [];
+        isSyncingCalendar.current = true;
+        let hasFailedInRun = false;
         
-        for (const cal of calendarsToSync) {
-            try {
-                const targetUrl = cal.url.replace(/^webcal:\/\//i, 'https://');
-                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-                const response = await fetch(proxyUrl);
-                if (!response.ok) throw new Error(`Failed to fetch calendar: ${response.statusText}`);
-                const icsData = await response.text();
-                const parsed = parseIcs(icsData, cal, localUser);
-                allParsedEvents = [...allParsedEvents, ...parsed];
-            } catch (error) {
-                console.error(`Error syncing calendar "${cal.name}":`, error);
-                const errorTitle = t('error_sync_calendar_title');
-                const errorDesc = t('error_sync_calendar_description', { name: cal.name, error: (error as Error).message });
-                showAppModal({ text: `${errorTitle}\n\n${errorDesc}` });
+        try {
+            const calendarsToSync = localUser.syncedCalendars?.filter(c => c.enabled);
+            if (!calendarsToSync || calendarsToSync.length === 0) {
+                setSyncedEvents([]);
+                return;
+            }
+      
+            let allParsedEvents: CalendarEvent[] = [];
+            
+            for (const cal of calendarsToSync) {
+                try {
+                    const targetUrl = cal.url.replace(/^webcal:\/\//i, 'https://');
+                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+                    const response = await fetch(proxyUrl);
+                    if (!response.ok) throw new Error(`Failed to fetch calendar: ${response.statusText}`);
+                    const icsData = await response.text();
+                    const parsed = parseIcs(icsData, cal, localUser);
+                    allParsedEvents = [...allParsedEvents, ...parsed];
+                } catch (error) {
+                    console.error(`Error syncing calendar "${cal.name}":`, error);
+                    hasFailedInRun = true;
+                }
+            }
+            setSyncedEvents(allParsedEvents);
+        } finally {
+            isSyncingCalendar.current = false;
+            if (hasFailedInRun) {
+                syncFailureCount.current++;
+                if (syncFailureCount.current >= 3) {
+                    console.warn('Calendar sync failed repeatedly. Starting 1-minute cooldown.');
+                    isSyncOnCooldown.current = true;
+                    setTimeout(() => {
+                        console.log('Calendar sync cooldown finished. Resuming sync.');
+                        isSyncOnCooldown.current = false;
+                        syncFailureCount.current = 0;
+                    }, 60000); // 1 minute cooldown
+                }
+            } else {
+                syncFailureCount.current = 0; // Reset counter on success
             }
         }
-        setSyncedEvents(allParsedEvents);
-    }, [parseIcs, showAppModal, t]);
+    }, [parseIcs]);
 
-    // Data fetching effects, now at top level
+    // Keep refs updated to be used in stable-dependency useEffects
     useEffect(() => {
-        if (!user?.uid || user.uid === 'guest-user' || isAdmin) {
+        latestUser.current = user;
+    }, [user]);
+
+    useEffect(() => {
+        tRef.current = t;
+    }, [t]);
+
+    useEffect(() => {
+        tSubjectRef.current = tSubject;
+    }, [tSubject]);
+    
+    // Data fetching effect, with stable dependencies
+    useEffect(() => {
+        const currentUid = user?.uid;
+        if (!currentUid || currentUid === 'guest-user' || isAdmin) {
             setUserEvents([]);
             setRecentFiles([]);
             setNotifications([]);
@@ -595,46 +607,59 @@ const App: React.FC = () => {
             setAllUserTasks([]);
             setAllStudySessions([]);
             setSyncedEvents([]);
+            setChatHistories([]);
             return;
         }
-        
-        fetchAndParseCalendars(user);
-        const calendarSyncInterval = setInterval(() => fetchAndParseCalendars(user), 20000);
 
-        const eventsQuery = db.collection(`artifacts/${appId}/users/${user.uid}/calendarEvents`).orderBy('start', 'asc');
-        const unsubscribeEvents = eventsQuery.onSnapshot((snapshot) => {
+        const unsubscribers: Unsubscribe[] = [];
+        
+        // Profile listener
+        const userDocRef = db.doc(`artifacts/${appId}/public/data/users/${currentUid}`);
+        unsubscribers.push(userDocRef.onSnapshot(doc => {
+            if (doc.exists) {
+                setUser(prevUser => {
+                    if (!prevUser) return null;
+                    const newUserData = doc.data() as AppUser;
+                    return { ...prevUser, ...newUserData };
+                });
+            }
+        }));
+
+        const eventsQuery = db.collection(`artifacts/${appId}/users/${currentUid}/calendarEvents`).orderBy('start', 'asc');
+        unsubscribers.push(eventsQuery.onSnapshot((snapshot) => {
             const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CalendarEvent));
             setUserEvents(fetchedEvents);
-        });
+        }));
         
-        const plansQuery = db.collection(`artifacts/${appId}/users/${user.uid}/studyPlans`).orderBy('createdAt', 'desc');
-        const unsubscribePlans = plansQuery.onSnapshot((snapshot) => {
+        const plansQuery = db.collection(`artifacts/${appId}/users/${currentUid}/studyPlans`).orderBy('createdAt', 'desc');
+        unsubscribers.push(plansQuery.onSnapshot((snapshot) => {
             const fetchedPlans = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudyPlan));
             setUserStudyPlans(fetchedPlans);
-        });
+        }));
 
-        const filesQuery = db.collection(`artifacts/${appId}/public/data/files`).where('ownerId', '==', user.uid).orderBy('createdAt', 'desc').limit(5);
-        const unsubscribeFiles = filesQuery.onSnapshot((snapshot) => {
+        const filesQuery = db.collection(`artifacts/${appId}/public/data/files`).where('ownerId', '==', currentUid).orderBy('createdAt', 'desc').limit(5);
+        unsubscribers.push(filesQuery.onSnapshot((snapshot) => {
             const fetchedFiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FileData));
             setRecentFiles(fetchedFiles);
-        });
+        }));
         
-        const notifsQuery = db.collection(`artifacts/${appId}/users/${user.uid}/notifications`).orderBy('createdAt', 'desc').limit(50);
-        const unsubscribeNotifs = notifsQuery.onSnapshot(snapshot => {
+        const notifsQuery = db.collection(`artifacts/${appId}/users/${currentUid}/notifications`).orderBy('createdAt', 'desc').limit(50);
+        unsubscribers.push(notifsQuery.onSnapshot(snapshot => {
             const fetchedNotifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
             setNotifications(fetchedNotifs);
-        });
+        }));
 
         // Listen for new broadcasts
         const broadcastQuery = db.collection(`artifacts/${appId}/public/data/broadcasts`).orderBy('createdAt', 'desc').limit(10);
-        const unsubscribeBroadcasts = broadcastQuery.onSnapshot(async (broadcastSnapshot) => {
-            if (broadcastSnapshot.empty || !user?.uid || isAdmin || !user) return;
+        unsubscribers.push(broadcastQuery.onSnapshot(async (broadcastSnapshot) => {
+            const localUser = latestUser.current;
+            if (broadcastSnapshot.empty || !localUser?.uid || isAdmin) return;
 
-            const userNotifsRef = db.collection(`artifacts/${appId}/users/${user.uid}/notifications`);
+            const userNotifsRef = db.collection(`artifacts/${appId}/users/${localUser.uid}/notifications`);
             const existingBroadcastNotifsQuery = userNotifsRef.where('broadcastId', '!=', null);
             const existingBroadcastNotifsSnapshot = await existingBroadcastNotifsQuery.get();
             const existingBroadcastIds = new Set(existingBroadcastNotifsSnapshot.docs.map(doc => doc.data().broadcastId));
-            const dismissedBroadcastIds = user.dismissedBroadcastIds || [];
+            const dismissedBroadcastIds = localUser.dismissedBroadcastIds || [];
 
             const batch = db.batch();
             let hasNewBroadcasts = false;
@@ -659,46 +684,47 @@ const App: React.FC = () => {
             });
 
             if (hasNewBroadcasts) await batch.commit();
-        });
+        }));
         
         // Listen for feedback replies
-        const feedbackQuery = db.collection(`artifacts/${appId}/public/data/feedback`).where('userId', '==', user.uid);
-        const unsubscribeFeedback = feedbackQuery.onSnapshot(async (feedbackSnapshot) => {
-            if (!user?.uid || !user) return;
-            const userNotifsRef = db.collection(`artifacts/${appId}/users/${user.uid}/notifications`);
+        const feedbackQuery = db.collection(`artifacts/${appId}/public/data/feedback`).where('userId', '==', currentUid);
+        unsubscribers.push(feedbackQuery.onSnapshot(async (feedbackSnapshot) => {
+            const localUser = latestUser.current;
+            if (!localUser?.uid) return;
+            const userNotifsRef = db.collection(`artifacts/${appId}/users/${localUser.uid}/notifications`);
             const existingFeedbackNotifsQuery = userNotifsRef.where('feedbackId', '!=', null);
             const existingNotifsSnapshot = await existingFeedbackNotifsQuery.get();
             const existingFeedbackIds = new Set(existingNotifsSnapshot.docs.map(doc => doc.data().feedbackId));
-            const dismissedFeedbackIds = user.dismissedFeedbackIds || [];
+            const dismissedFeedbackIds = localUser.dismissedFeedbackIds || [];
 
             const batch = db.batch();
             let hasNewReplies = false;
             feedbackSnapshot.docs.forEach(doc => {
                 const feedbackData = doc.data();
                 const feedbackId = doc.id;
-                // Check if it's a replied message and we haven't notified the user yet
                 if(feedbackData.status === 'replied' && !existingFeedbackIds.has(feedbackId) && !dismissedFeedbackIds.includes(feedbackId)){
                     const newNotifRef = userNotifsRef.doc();
                     batch.set(newNotifRef, {
-                        title: t('feedback_reply_notification_title'),
-                        text: t('feedback_reply_notification_text', { subject: feedbackData.subject }),
+                        title: tRef.current('feedback_reply_notification_title'),
+                        text: tRef.current('feedback_reply_notification_text', { subject: feedbackData.subject }),
                         type: 'feedback_reply', read: false,
                         createdAt: Timestamp.now(),
-                        feedbackId: feedbackId, // Link to the feedback doc
+                        feedbackId: feedbackId,
                     });
                     hasNewReplies = true;
                 }
             });
 
             if (hasNewReplies) await batch.commit();
-        });
+        }));
 
         // Listen for new shared sets to create notifications
-        const sharedSetsQuery = db.collection(`artifacts/${appId}/public/data/sharedSets`).where('recipientEmail', '==', user.email);
-        const unsubscribeSharedSets = sharedSetsQuery.onSnapshot(async (snapshot) => {
-            if (snapshot.empty || !user?.uid) return;
+        const sharedSetsQuery = db.collection(`artifacts/${appId}/public/data/sharedSets`).where('recipientEmail', '==', latestUser.current?.email);
+        unsubscribers.push(sharedSetsQuery.onSnapshot(async (snapshot) => {
+            const localUser = latestUser.current;
+            if (snapshot.empty || !localUser?.uid) return;
 
-            const userNotifsRef = db.collection(`artifacts/${appId}/users/${user.uid}/notifications`);
+            const userNotifsRef = db.collection(`artifacts/${appId}/users/${localUser.uid}/notifications`);
             const existingShareNotifsQuery = userNotifsRef.where('flashcardSetId', '!=', null);
             const existingNotifsSnapshot = await existingShareNotifsQuery.get();
             const existingSetIds = new Set(existingNotifsSnapshot.docs.map(doc => doc.data().flashcardSetId));
@@ -710,34 +736,28 @@ const App: React.FC = () => {
                 if (change.type === 'added') {
                     const shareData = change.doc.data();
                     const setId = shareData.setId;
-
                     if (!existingSetIds.has(setId)) {
                         const newNotifRef = userNotifsRef.doc();
                         batch.set(newNotifRef, {
-                            title: t('notification_flashcard_share_title'),
-                            text: t('notification_flashcard_share_text', { name: shareData.sharerName, setName: shareData.setName, subject: tSubject(shareData.subject) }),
-                            type: 'flashcard_share',
-                            read: false,
-                            createdAt: shareData.createdAt,
-                            flashcardSetId: setId,
-                            subject: shareData.subject,
+                            title: tRef.current('notification_flashcard_share_title'),
+                            text: tRef.current('notification_flashcard_share_text', { name: shareData.sharerName, setName: shareData.setName, subject: tSubjectRef.current(shareData.subject) }),
+                            type: 'flashcard_share', read: false,
+                            createdAt: shareData.createdAt, flashcardSetId: setId, subject: shareData.subject,
                         });
                         hasNewShares = true;
                     }
                 }
             });
-
-            if (hasNewShares) {
-                await batch.commit();
-            }
-        });
+            if (hasNewShares) await batch.commit();
+        }));
         
         // Listen for new shared plans to create notifications
-        const sharedPlansQuery = db.collection(`artifacts/${appId}/public/data/sharedPlans`).where('recipientEmail', '==', user.email);
-        const unsubscribeSharedPlans = sharedPlansQuery.onSnapshot(async (snapshot) => {
-            if (snapshot.empty || !user?.uid) return;
+        const sharedPlansQuery = db.collection(`artifacts/${appId}/public/data/sharedPlans`).where('recipientEmail', '==', latestUser.current?.email);
+        unsubscribers.push(sharedPlansQuery.onSnapshot(async (snapshot) => {
+            const localUser = latestUser.current;
+            if (snapshot.empty || !localUser?.uid) return;
         
-            const userNotifsRef = db.collection(`artifacts/${appId}/users/${user.uid}/notifications`);
+            const userNotifsRef = db.collection(`artifacts/${appId}/users/${localUser.uid}/notifications`);
             const existingPlanNotifsQuery = userNotifsRef.where('planId', '!=', null);
             const existingNotifsSnapshot = await existingPlanNotifsQuery.get();
             const existingPlanIds = new Set(existingNotifsSnapshot.docs.map(doc => doc.data().planId));
@@ -748,75 +768,55 @@ const App: React.FC = () => {
             snapshot.docChanges().forEach((change) => {
                 if (change.type === 'added') {
                     const shareData = change.doc.data();
-                    const planId = change.doc.id; // The shared document ID is the plan ID
-        
+                    const planId = change.doc.id;
                     if (!existingPlanIds.has(planId)) {
                         const newNotifRef = userNotifsRef.doc();
                         batch.set(newNotifRef, {
-                            title: t('notification_plan_share_title'),
-                            text: t('notification_plan_share_text', { name: shareData.sharerName, planName: shareData.title }),
-                            type: 'plan_share',
-                            read: false,
-                            createdAt: shareData.createdAt,
-                            planId: planId,
+                            title: tRef.current('notification_plan_share_title'),
+                            text: tRef.current('notification_plan_share_text', { name: shareData.sharerName, planName: shareData.title }),
+                            type: 'plan_share', read: false,
+                            createdAt: shareData.createdAt, planId: planId,
                         });
                         hasNewShares = true;
                     }
                 }
             });
-        
-            if (hasNewShares) {
-                await batch.commit();
-            }
-        });
-
+            if (hasNewShares) await batch.commit();
+        }));
 
         // Fetch all data for progress view & home dashboard
-        const allFilesQuery = db.collection(`artifacts/${appId}/public/data/files`).where('ownerId', '==', user.uid);
-        const unsubscribeAllFiles = allFilesQuery.onSnapshot((snapshot) => {
-            setAllUserFiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FileData)));
-        });
+        const allFilesQuery = db.collection(`artifacts/${appId}/public/data/files`).where('ownerId', '==', currentUid);
+        unsubscribers.push(allFilesQuery.onSnapshot((snapshot) => setAllUserFiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FileData)))));
 
-        const allNotesQuery = db.collection(`artifacts/${appId}/users/${user.uid}/notes`);
-        const unsubscribeAllNotes = allNotesQuery.onSnapshot((snapshot) => {
-            setAllUserNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note)));
-        });
+        const allNotesQuery = db.collection(`artifacts/${appId}/users/${currentUid}/notes`);
+        unsubscribers.push(allNotesQuery.onSnapshot((snapshot) => setAllUserNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note)))));
 
-        const allSetsQuery = db.collection(`artifacts/${appId}/users/${user.uid}/flashcardDecks`);
-        const unsubscribeAllSets = allSetsQuery.onSnapshot((snapshot) => {
-            setAllUserFlashcardSets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FlashcardSet)));
-        });
+        const allSetsQuery = db.collection(`artifacts/${appId}/users/${currentUid}/flashcardDecks`);
+        unsubscribers.push(allSetsQuery.onSnapshot((snapshot) => setAllUserFlashcardSets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FlashcardSet)))));
 
-        const allTasksQuery = db.collection(`artifacts/${appId}/users/${user.uid}/tasks`);
-        const unsubscribeAllTasks = allTasksQuery.onSnapshot((snapshot) => {
-            setAllUserTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ToDoTask)));
-        });
+        const allTasksQuery = db.collection(`artifacts/${appId}/users/${currentUid}/tasks`);
+        unsubscribers.push(allTasksQuery.onSnapshot((snapshot) => setAllUserTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ToDoTask)))));
 
-        const allSessionsQuery = db.collection(`artifacts/${appId}/users/${user.uid}/studySessions`);
-        const unsubscribeAllSessions = allSessionsQuery.onSnapshot((snapshot) => {
-            setAllStudySessions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudySession)));
-        });
+        const allSessionsQuery = db.collection(`artifacts/${appId}/users/${currentUid}/studySessions`);
+        unsubscribers.push(allSessionsQuery.onSnapshot((snapshot) => setAllStudySessions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudySession)))));
+        
+        const historiesQuery = db.collection(`artifacts/${appId}/users/${currentUid}/chatHistories`).orderBy('updatedAt', 'desc');
+        unsubscribers.push(historiesQuery.onSnapshot(snapshot => setChatHistories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatHistory)))));
 
-
-        return () => {
-            unsubscribeEvents();
-            unsubscribeFiles();
-            unsubscribeNotifs();
-            unsubscribeBroadcasts();
-            unsubscribeFeedback();
-            unsubscribeSharedSets();
-            unsubscribeSharedPlans();
-            unsubscribeAllFiles();
-            unsubscribeAllNotes();
-            unsubscribeAllSets();
-            unsubscribePlans();
-            unsubscribeAllTasks();
-            unsubscribeAllSessions();
-            clearInterval(calendarSyncInterval);
-        };
-
-    }, [user, isAdmin, t, tSubject, fetchAndParseCalendars]);
+        return () => unsubscribers.forEach(unsub => unsub());
+    }, [user?.uid, isAdmin]);
     
+
+    // Effect for periodic calendar sync - decoupled from re-renders
+    useEffect(() => {
+        if (!user?.uid || user.uid === 'guest-user' || isAdmin) return;
+        const runSync = () => { if (latestUser.current) fetchAndParseCalendars(latestUser.current); };
+        runSync();
+        const intervalId = setInterval(runSync, 20000);
+        return () => clearInterval(intervalId);
+    }, [user?.uid, isAdmin, fetchAndParseCalendars]);
+
+
     useEffect(() => {
         if (!user?.uid || !currentSubject || user.uid === 'guest-user') {
             setAllSubjectFiles([]);
@@ -946,7 +946,7 @@ const App: React.FC = () => {
     
         // Delete all private user collections
         const userRoot = `artifacts/${appId}/users/${uid}`;
-        const collectionsToDelete = ['calendarEvents', 'notes', 'tasks', 'notifications', 'studyPlans', 'studySessions'];
+        const collectionsToDelete = ['calendarEvents', 'notes', 'tasks', 'notifications', 'studyPlans', 'studySessions', 'chatHistories'];
         for (const coll of collectionsToDelete) {
             await batchDelete(db.collection(`${userRoot}/${coll}`));
         }
@@ -1096,148 +1096,14 @@ const App: React.FC = () => {
     const resetAIChat = useCallback(() => {
         setAiChat(null);
         setAiChatMessages([]);
+        setCurrentChatSessionId(null);
+        setChatHistories([]);
     }, []);
 
     // Main authentication and profile loading effect
     useEffect(() => {
-        let profileUnsubscribe: Unsubscribe | undefined;
-
         const authSubscriber = auth.onAuthStateChanged(async (firebaseUser) => {
-            if (profileUnsubscribe) profileUnsubscribe();
-            setAppStatus('initializing');
-
-            if (firebaseUser) {
-                if (firebaseUser.email === 'admin1069@gmail.com') {
-                    setIsAdmin(true);
-                    
-                    const tempAdminUser = {
-                        uid: firebaseUser.uid,
-                        email: firebaseUser.email,
-                        userName: 'Admin',
-                        profilePictureUrl: `https://ui-avatars.com/api/?name=A&background=9333ea&color=fff`,
-                        isAdmin: true,
-                    } as AppUser;
-                    setUser(tempAdminUser);
-                    
-                    const adminSettingsRef = db.doc(`artifacts/${appId}/public/data/adminSettings/global`);
-                    profileUnsubscribe = adminSettingsRef.onSnapshot(async (docSnap) => {
-                        if (docSnap.exists) {
-                            setAdminSettings(docSnap.data() as AdminSettings);
-                        } else {
-                            const defaultAdminSettings: AdminSettings = { themePreference: 'purple', pinProtectionEnabled: true, fontPreference: 'inter' };
-                            await adminSettingsRef.set(defaultAdminSettings);
-                            setAdminSettings(defaultAdminSettings);
-                        }
-                        setAppStatus('authenticated');
-                    }, (error) => {
-                        console.error("Fatal Admin Settings Load Error:", error);
-                        showAppModal({ text: t('error_admin_login_failed') });
-                        auth.signOut();
-                        setAppStatus('unauthenticated');
-                    });
-                    return;
-                }
-                
-                setIsAdmin(false);
-                const userDocRef = db.doc(`artifacts/${appId}/public/data/users/${firebaseUser.uid}`);
-                profileUnsubscribe = userDocRef.onSnapshot(async (docSnap) => {
-                    if (docSnap.exists) {
-                        const userData = docSnap.data() as AppUser;
-                        if (userData.disabled) {
-                            await auth.signOut();
-                            showAppModal({ text: t('error_account_disabled') });
-                            setAppStatus('unauthenticated');
-                            return;
-                        }
-
-                        const profileUpdate: Partial<AppUser> = {};
-
-                        // Check and update email verification status
-                        if (firebaseUser.emailVerified && !userData.isVerifiedByEmail) {
-                            profileUpdate.isVerifiedByEmail = true;
-                        }
-                        
-                        // Check and update login streak
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const lastLogin = (userData.lastLoginDate as any)?.toDate();
-                        if(lastLogin) lastLogin.setHours(0, 0, 0, 0);
-
-                        if (!lastLogin || lastLogin.getTime() < today.getTime()) {
-                            const yesterday = new Date(today);
-                            yesterday.setDate(yesterday.getDate() - 1);
-                            let newStreak = userData.streakCount || 0;
-                            if(lastLogin && lastLogin.getTime() === yesterday.getTime()){
-                                newStreak++;
-                            } else {
-                                if (newStreak > 0) {
-                                    const notifRef = db.collection(`artifacts/${appId}/users/${firebaseUser.uid}/notifications`).doc();
-                                    notifRef.set({
-                                        title: t('streak_lost_notification_title'),
-                                        text: t('streak_lost_notification_text', { count: newStreak }),
-                                        type: 'streak', read: false, createdAt: Timestamp.now()
-                                    });
-                                }
-                                newStreak = 1;
-                            }
-                            profileUpdate.streakCount = newStreak;
-                            profileUpdate.lastLoginDate = Timestamp.fromDate(today);
-                        }
-
-                        if (Object.keys(profileUpdate).length > 0) {
-                           await userDocRef.update(profileUpdate);
-                        }
-
-                        const finalUser: AppUser = {
-                            ...userData,
-                            ...profileUpdate,
-                            uid: firebaseUser.uid,
-                            email: userData.email || firebaseUser.email || '',
-                            userName: userData.userName || 'Gebruiker',
-                            profilePictureUrl: userData.profilePictureUrl || 'NONE',
-                        };
-                        setUser(finalUser);
-                        
-                        if (finalUser.hasCompletedOnboarding === false) {
-                            setShowAiSetup(true);
-                        } else {
-                            setShowAiSetup(false);
-                        }
-                        
-                        if (finalUser.focusDuration) setFocusMinutes(finalUser.focusDuration);
-                        if (finalUser.breakDuration) setBreakMinutes(finalUser.breakDuration);
-
-                    } else { // New user document needs to be created
-                        const finalUser: AppUser = {
-                            uid: firebaseUser.uid,
-                            email: firebaseUser.email || '',
-                            userName: firebaseUser.displayName || t('guest_fallback_name'),
-                            profilePictureUrl: firebaseUser.photoURL || 'NONE',
-                            createdAt: Timestamp.now(), selectedSubjects: [], customSubjects: [], schoolName: '',
-                            className: '', educationLevel: '',
-                            languagePreference: (localStorage.getItem('appLanguage') as 'nl' | 'en') || 'nl',
-                            themePreference: localStorage.getItem('themeColor') || 'emerald',
-                            fontPreference: 'inter', homeLayout: defaultHomeLayout, streakCount: 1,
-                            lastLoginDate: Timestamp.now(), notificationsEnabled: true, disabled: false,
-                            isVerifiedByEmail: firebaseUser.emailVerified,
-                            focusDuration: 25, breakDuration: 5,
-                            dismissedBroadcastIds: [], dismissedFeedbackIds: [],
-                            aiBotName: 'AI Assistent',
-                            aiBotAvatarUrl: null,
-                            hasCompletedOnboarding: false,
-                            goals: [],
-                            syncedCalendars: [],
-                        };
-                        await userDocRef.set(finalUser, { merge: true });
-                        setUser(finalUser);
-                    }
-                    setAppStatus('authenticated');
-                }, (error) => {
-                    console.error("Firestore profile snapshot error:", error);
-                    showAppModal({ text: t('error_profile_load_failed') });
-                    setAppStatus('unauthenticated');
-                });
-            } else {
+            if (!firebaseUser) {
                 sessionStorage.removeItem('studybox_verification_skipped');
                 setVerificationSkipped(false);
                 setUser(null);
@@ -1249,14 +1115,105 @@ const App: React.FC = () => {
                     sessionStorage.removeItem('logout-event');
                 }
                 setAppStatus('unauthenticated');
+                return;
+            }
+
+            setAppStatus('initializing');
+            const userDocRef = db.doc(`artifacts/${appId}/public/data/users/${firebaseUser.uid}`);
+
+            try {
+                const docSnap = await userDocRef.get();
+                if (docSnap.exists) {
+                    const userData = docSnap.data() as AppUser;
+                    if (userData.disabled) {
+                        await auth.signOut();
+                        showAppModal({ text: t('error_account_disabled') });
+                        setAppStatus('unauthenticated');
+                        return;
+                    }
+                    
+                    const profileUpdate: Partial<AppUser> = {};
+                    if (firebaseUser.emailVerified && !userData.isVerifiedByEmail) {
+                        profileUpdate.isVerifiedByEmail = true;
+                    }
+                    const today = new Date(); today.setHours(0, 0, 0, 0);
+                    const lastLogin = (userData.lastLoginDate as any)?.toDate();
+                    if(lastLogin) lastLogin.setHours(0, 0, 0, 0);
+
+                    if (!lastLogin || lastLogin.getTime() < today.getTime()) {
+                        const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+                        let newStreak = userData.streakCount || 0;
+                        if(lastLogin && lastLogin.getTime() === yesterday.getTime()){
+                            newStreak++;
+                        } else {
+                            if (newStreak > 0) {
+                                db.collection(`artifacts/${appId}/users/${firebaseUser.uid}/notifications`).doc().set({
+                                    title: t('streak_lost_notification_title'),
+                                    text: t('streak_lost_notification_text', { count: newStreak }),
+                                    type: 'streak', read: false, createdAt: Timestamp.now()
+                                });
+                            }
+                            newStreak = 1;
+                        }
+                        profileUpdate.streakCount = newStreak;
+                        profileUpdate.lastLoginDate = Timestamp.fromDate(today);
+                    }
+
+                    if (Object.keys(profileUpdate).length > 0) {
+                       await userDocRef.update(profileUpdate);
+                    }
+                    
+                    const finalUser: AppUser = { ...userData, ...profileUpdate, uid: firebaseUser.uid, email: userData.email || firebaseUser.email || '' };
+                    setUser(finalUser);
+                    
+                    db.collection(`artifacts/${appId}/users/${firebaseUser.uid}/chatHistories`).where('updatedAt', '<', Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
+                        .get().then(s => { if (!s.empty) { const b = db.batch(); s.docs.forEach(d => b.delete(d.ref)); b.commit(); }});
+
+                    setShowAiSetup(finalUser.hasCompletedOnboarding === false);
+                    if (finalUser.focusDuration) setFocusMinutes(finalUser.focusDuration);
+                    if (finalUser.breakDuration) setBreakMinutes(finalUser.breakDuration);
+
+                } else {
+                    const finalUser: AppUser = {
+                        uid: firebaseUser.uid, email: firebaseUser.email || '', userName: firebaseUser.displayName || t('guest_fallback_name'),
+                        profilePictureUrl: firebaseUser.photoURL || 'NONE', createdAt: Timestamp.now(), selectedSubjects: [], customSubjects: [],
+                        schoolName: '', className: '', educationLevel: '', languagePreference: language, themePreference: themeColor,
+                        fontPreference: 'inter', homeLayout: defaultHomeLayout, streakCount: 1, lastLoginDate: Timestamp.now(),
+                        notificationsEnabled: true, disabled: false, isVerifiedByEmail: firebaseUser.emailVerified,
+                        focusDuration: 25, breakDuration: 5, dismissedBroadcastIds: [], dismissedFeedbackIds: [],
+                        aiBotName: 'AI Assistent', aiBotAvatarUrl: null, hasCompletedOnboarding: false, goals: [], syncedCalendars: [],
+                    };
+                    await userDocRef.set(finalUser, { merge: true });
+                    setUser(finalUser);
+                }
+                
+                if (firebaseUser.email === 'admin1069@gmail.com') {
+                    setIsAdmin(true);
+                    const settingsDoc = await db.doc(`artifacts/${appId}/public/data/adminSettings/global`).get();
+                    if (settingsDoc.exists) {
+                        setAdminSettings(settingsDoc.data() as AdminSettings);
+                    } else {
+                         const defaultAdminSettings: AdminSettings = { themePreference: 'emerald', pinProtectionEnabled: true, fontPreference: 'inter' };
+                         await db.doc(`artifacts/${appId}/public/data/adminSettings/global`).set(defaultAdminSettings);
+                         setAdminSettings(defaultAdminSettings);
+                    }
+                } else {
+                    if (!firebaseUser.emailVerified && !verificationSkipped) {
+                         setAppStatus('awaiting-verification');
+                         return;
+                    }
+                }
+                
+                setAppStatus('authenticated');
+            } catch (error) {
+                console.error("Auth state change error:", error);
+                await auth.signOut();
             }
         });
 
-        return () => {
-            authSubscriber();
-            if (profileUnsubscribe) profileUnsubscribe();
-        };
-    }, [showAppModal, t, resetAIChat]);
+        return () => authSubscriber();
+    }, [showAppModal, t, resetAIChat, language, themeColor, verificationSkipped]);
+
 
      // Effect to initialize AI Chat
      useEffect(() => {
@@ -1282,34 +1239,17 @@ const App: React.FC = () => {
             };
 
             const tools: Tool[] = [{ functionDeclarations: [addEventTool, removeEventTool, getEventsTool, getStudyPlansTool, getStudyPlanDetailsTool] }];
-            const systemInstructionText = t('ai_system_instruction', { botName: user.aiBotName || 'AI Assistant', userName: user.userName, subjects: availableSubjects.join(', ') });
+            const systemInstructionText = t('ai_system_instruction', { botName: user.aiBotName || 'AI Assistent', userName: user.userName, subjects: availableSubjects.join(', ') });
             
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const chatInstance = ai.chats.create({ model: 'gemini-2.5-flash', config: { systemInstruction: systemInstructionText, tools: tools } });
             setAiChat(chatInstance);
 
-            if (aiChatMessages.length === 0) {
-                const getGreeting = async () => {
-                    try {
-                        const stream = await chatInstance.sendMessageStream({ message: "Greet the user to start the conversation." });
-                        let greetingText = '';
-                        for await (const chunk of stream) {
-                            if (chunk.text) greetingText += chunk.text;
-                        }
-                        if (greetingText) {
-                            setAiChatMessages([{ role: 'model', text: greetingText }]);
-                        } else {
-                            setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome') }]);
-                        }
-                    } catch (e) {
-                        console.error("Failed to get initial greeting:", e);
-                        setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome') }]);
-                    }
-                };
-                getGreeting();
+            if (aiChatMessages.length === 0 && !currentChatSessionId) {
+                setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome', { userName: user.userName.split(' ')[0], botName: user.aiBotName || 'AI Assistant' }) }]);
             }
         }
-    }, [user, isAdmin, aiChat, aiChatMessages.length, t]);
+    }, [user, isAdmin, aiChat, aiChatMessages.length, t, currentChatSessionId]);
 
     // Effect to sync user preferences to app state
     useEffect(() => {
@@ -1365,7 +1305,7 @@ const App: React.FC = () => {
 
     const authContainerClasses = (appStatus === 'unauthenticated' || appStatus === 'initializing' || appStatus === 'awaiting-verification' || (showIntro && !user) ) ? getAuthThemeClasses('bg') : '';
 
-    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions, addCalendarEvent: addCalendarEventFromAI, removeCalendarEvent: removeCalendarEventFromAI, currentTime, aiChat, aiChatMessages, setAiChatMessages, resetAIChat };
+    const mainAppLayoutProps = { user, t, getThemeClasses, showAppModal, closeAppModal, tSubject, copyTextToClipboard, setIsAvatarModalOpen, language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, handleLogout, handleGoHome, currentView, setCurrentView, currentSubject, setCurrentSubject, subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, onProfileUpdate: handleProfileUpdate, onDeleteAccountRequest: () => setIsReauthModalOpen(true), onCleanupAccountRequest: () => setIsCleanupReauthModalOpen(true), onClearCalendarRequest: () => setIsClearCalendarReauthModalOpen(true), notifications, unreadCount, showBroadcast: showBroadcastModal, focusMinutes, setFocusMinutes: handleFocusMinutesChange, breakMinutes, setBreakMinutes: handleBreakMinutesChange, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions, addCalendarEvent: addCalendarEventFromAI, removeCalendarEvent: removeCalendarEventFromAI, currentTime, aiChat, aiChatMessages, setAiChatMessages, resetAIChat, chatHistories, currentChatSessionId, setCurrentChatSessionId };
     
     const isLoading = !isAppReadyForDisplay || !isMinLoadingTimePassed;
 
@@ -1374,8 +1314,24 @@ const App: React.FC = () => {
              <style>{`
                  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
                  @keyframes fadeInSlower { from { opacity: 0; } to { opacity: 1; } }
+                 @keyframes fadeOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-10px); } }
                  .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
                  .animate-fade-in-slow { animation: fadeInSlower 0.5s ease-out forwards; }
+                 .animate-fade-out { animation: fadeOut 0.3s ease-out forwards; }
+                 .prose { word-break: break-word; color: #374151; font-size: 0.9rem; }
+                 .prose h1, .prose h2, .prose h3 { font-weight: 700; margin-top: 1.2em; margin-bottom: 0.6em; }
+                 .prose h1 { font-size: 1.5em; } .prose h2 { font-size: 1.25em; } .prose h3 { font-size: 1.1em; }
+                 .prose p { margin-top: 0.5em; margin-bottom: 0.5em; line-height: 1.4; }
+                 .prose code { background-color: #e5e7eb; padding: 0.2em 0.4em; margin: 0; font-size: 85%; border-radius: 3px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+                 .prose pre { background-color: #1f2937; color: #f3f4f6; padding: 1em; border-radius: 0.5em; overflow-x: auto; }
+                 .prose pre code { background-color: transparent; padding: 0; color: inherit; }
+                 .prose ul, .prose ol { margin-top: 0.8em; margin-bottom: 0.8em; padding-left: 1.5rem; }
+                 .prose ul { list-style-type: disc; }
+                 .prose ol { list-style-type: decimal; }
+                 .prose li > p { margin-top: 0.4em; margin-bottom: 0.4em; }
+                 .prose blockquote { border-left: 4px solid #ccc; padding-left: 1em; margin-left: 0; font-style: italic; color: #6b7280; }
+                 .prose strong { font-weight: 600; }
+                 .prose a { color: #2563eb; text-decoration: underline; }
              `}</style>
             {modalContent && <CustomModal {...{ ...modalContent, onClose: closeAppModal, t, getThemeClasses }} />}
             <BroadcastModal isOpen={isBroadcastModalOpen} onClose={() => setIsBroadcastModalOpen(false)} broadcast={selectedBroadcast} t={t} getThemeClasses={getThemeClasses} />
@@ -1406,7 +1362,7 @@ const App: React.FC = () => {
             <UserDetailModal isOpen={isUserDetailModalOpen} onClose={() => setIsUserDetailModalOpen(false)} user={selectedUserForDetail} {...{t, tSubject, getThemeClasses, showAppModal}} />
             <PinVerificationModal isOpen={isPinVerificationModalOpen} onClose={() => setIsPinVerificationModalOpen(false)} onSuccess={handlePinDisableConfirm} t={t} getThemeClasses={getThemeClasses} />
             
-            {isLoading && <LoadingScreen getThemeClasses={getAuthThemeClasses} language={language} />}
+            {isLoading && <LoadingScreen getThemeClasses={getAuthThemeClasses} />}
             
             {!isLoading && (
               <>
@@ -1465,7 +1421,7 @@ const App: React.FC = () => {
                         )
                      ) : user && !isAdmin ? (
                         <MainAppLayout {...mainAppLayoutProps} />
-                    ) : <LoadingScreen getThemeClasses={getAuthThemeClasses} language={language}/>
+                    ) : <LoadingScreen getThemeClasses={getAuthThemeClasses} />
                 )}
               </>
             )}

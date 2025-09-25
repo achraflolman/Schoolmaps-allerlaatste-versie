@@ -232,3 +232,12 @@ export interface ChatMessage {
     role: 'user' | 'model';
     text: string;
 }
+
+export interface ChatHistory {
+    id: string;
+    userId: string;
+    title: string;
+    createdAt: FirebaseTimestamp;
+    updatedAt: FirebaseTimestamp;
+    messages: ChatMessage[];
+}

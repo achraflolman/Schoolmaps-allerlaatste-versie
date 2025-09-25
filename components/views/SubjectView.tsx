@@ -8,7 +8,9 @@ interface SubjectViewProps {
     currentSubject: string;
     subjectFiles: FileData[];
     setCurrentSubject: (subject: string | null) => void;
-    t: (key: string, replacements?: { [key: string]: string | number }) => void;
+    // FIX: Corrected function return type from `void` to `string` to match usage.
+    t: (key: string, replacements?: { [key: string]: string | number }) => string;
+    // FIX: Corrected function return type to `string` based on error messages, ensuring it matches usage.
     tSubject: (key: string) => string;
     getThemeClasses: (variant: string) => string;
     showAppModal: (content: ModalContent) => void;

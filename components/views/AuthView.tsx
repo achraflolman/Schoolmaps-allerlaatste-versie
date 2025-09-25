@@ -186,15 +186,14 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
       }
       try {
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        // onAuthStateChanged will handle view change. No need to set isSubmitting to false
+        // as the component will unmount on successful state change in App.tsx.
         if (userCredential.user.email !== 'admin1069@gmail.com' && !userCredential.user.emailVerified) {
-            // This block is now effectively skipped by the logic in App.tsx
-            // But we keep it as a safeguard.
             await auth.signOut();
             showAppModal({ text: t('error_email_not_verified') });
             setIsSubmitting(false);
             return;
         }
-         // onAuthStateChanged will handle view change for verified users.
       } catch (error: any) {
         handleAuthError(error.code);
         setIsSubmitting(false);
@@ -331,7 +330,7 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
               <FormInput name="password" label={t('password')} type="password" value={formData.password} onChange={handleInputChange} placeholder={t('placeholder_password')} disabled={isSubmitting} getThemeClasses={getThemeClasses}/>
                <div className="pt-2">
                  <button type="submit" disabled={isSubmitting} className={`w-full font-bold py-3 px-4 rounded-lg text-white ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} shadow-lg hover:shadow-xl transition-all duration-200 transform active:scale-[.98] disabled:opacity-70 disabled:cursor-not-allowed`}>
-                    {isSubmitting ? t('saving') : t('login_button')}
+                    {isSubmitting ? t('login_in_progress') : t('login_button')}
                  </button>
                </div>
             </form>

@@ -1,13 +1,12 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Timer, ListTodo, BarChart3, FileText, ArrowLeft } from 'lucide-react';
+import { BookOpen, Timer, ListTodo, BarChart3, FileText, X, Layers } from 'lucide-react';
 import FlashcardsView from './FlashcardsView';
 import StudyTimerView from './StudyTimerView';
 import ToDoListView from './ToDoListView';
 import ProgressView from '../ProgressView';
 import NotesView from './NotesView';
-
 import type { AppUser, ModalContent, ToDoTask, CalendarEvent, FileData, Note, FlashcardSet, StudySession } from '../../../types';
 
 interface ToolsViewProps {
@@ -43,34 +42,29 @@ interface ToolsViewProps {
   onToolSelected?: (tool: string | null) => void;
 }
 
-const useIsMobile = () => {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  return isMobile;
-};
-
 const ToolsView: React.FC<ToolsViewProps> = (props) => {
-  const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [activeTool, setActiveTool] = useState(props.initialTool || 'flashcards');
   const [isSessionActive, setIsSessionActive] = useState(false);
-  const isMobile = useIsMobile();
+  const [isMenuOpen, setIsMenuOpen] = useState(true);
+  const [isAnimatingOut, setIsAnimatingOut] = useState(false);
 
   useEffect(() => {
     if (props.initialTool) {
       setActiveTool(props.initialTool);
-    } else if (!isMobile) {
-      setActiveTool('flashcards');
-    } else {
-      setActiveTool(null);
     }
-  }, [props.initialTool, isMobile]);
+  }, [props.initialTool]);
+  
+  const handleToggleMenu = () => {
+    if (isMenuOpen) {
+        setIsAnimatingOut(true);
+        setTimeout(() => {
+            setIsMenuOpen(false);
+            setIsAnimatingOut(false);
+        }, 300); // Animation duration
+    } else {
+        setIsMenuOpen(true);
+    }
+  };
 
   const toolComponents: { [key: string]: React.ReactNode } = {
     flashcards: <FlashcardsView {...props} setIsSessionActive={setIsSessionActive} />,
@@ -88,81 +82,44 @@ const ToolsView: React.FC<ToolsViewProps> = (props) => {
       { id: 'progress', label: props.t('progress'), icon: <BarChart3/> },
   ];
 
-  const handleToolSelect = (toolId: string) => {
-    setActiveTool(toolId);
-  }
-
-  const handleBackToMenu = () => {
-    setActiveTool(null);
-    if (props.onToolSelected) {
-      props.onToolSelected(null);
-    }
-  }
-  
   if (isSessionActive && activeTool === 'flashcards') {
-    // Render only the flashcards view in fullscreen during a session
     return <FlashcardsView {...props} setIsSessionActive={setIsSessionActive} />;
   }
-  
-  if (isMobile) {
-    if (activeTool && toolComponents[activeTool]) {
-      const selectedToolInfo = toolNavItems.find(item => item.id === activeTool);
-      return (
-          <div className="animate-fade-in">
-              <div className="flex items-center mb-4">
-                   <button onClick={handleBackToMenu} className="p-2 rounded-full hover:bg-gray-200 transition-colors">
-                      <ArrowLeft />
-                  </button>
-                  <h2 className={`text-2xl font-bold text-center flex-grow ${props.getThemeClasses('text-strong')}`}>{selectedToolInfo?.label}</h2>
-                   <div className="w-9 h-9"></div> {/* Placeholder to ensure title is centered */}
-              </div>
-              {toolComponents[activeTool]}
-          </div>
-      );
-    }
 
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <h2 className={`text-3xl font-bold text-center ${props.getThemeClasses('text-strong')}`}>{props.t('extra_tools')}</h2>
-        <div className="grid grid-cols-2 gap-4">
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h2 className={`text-2xl font-bold ${props.getThemeClasses('text-strong')}`}>{props.t('extra_tools')}</h2>
+        <button 
+          onClick={handleToggleMenu} 
+          className="p-2 rounded-lg bg-gray-200 hover:bg-gray-300 transition-colors"
+          aria-label={isMenuOpen ? "Close Menu" : "Open Menu"}
+        >
+          {isMenuOpen ? <X size={20} /> : <Layers size={20} />}
+        </button>
+      </div>
+
+      {isMenuOpen && (
+        <div className={`grid grid-cols-2 md:grid-cols-3 gap-3 ${isAnimatingOut ? 'animate-fade-out' : 'animate-fade-in'}`}>
           {toolNavItems.map(item => (
             <button
               key={item.id}
-              onClick={() => handleToolSelect(item.id)}
-              className={`p-6 bg-white rounded-lg shadow-md font-semibold text-center hover:shadow-lg hover:-translate-y-1 transition-all duration-200 focus:outline-none focus:ring-2 ${props.getThemeClasses('ring')} ${props.getThemeClasses('text-strong')}`}
+              onClick={() => setActiveTool(item.id)}
+              className={`p-3 flex flex-col items-center justify-center gap-1 rounded-lg font-semibold text-center hover:shadow-lg hover:-translate-y-1 transition-all duration-200 focus:outline-none focus:ring-2 ${props.getThemeClasses('ring')}
+                ${activeTool === item.id 
+                  ? `${props.getThemeClasses('bg-light')} border-2 ${props.getThemeClasses('border')}` 
+                  : 'bg-white'
+                }`}
             >
-              <div className={props.getThemeClasses('text')}>
-                {React.cloneElement(item.icon, { className: "w-12 h-12 mx-auto mb-2" })}
-              </div>
-              {item.label}
+              {React.cloneElement(item.icon, { className: `w-8 h-8 mx-auto mb-1 ${props.getThemeClasses('text')}`})}
+              <span className="text-sm">{item.label}</span>
             </button>
           ))}
         </div>
-      </div>
-    );
-  }
+      )}
 
-  // Desktop Layout
-  const desktopActiveTool = activeTool || 'flashcards';
-  return (
-    <div className="flex flex-col md:flex-row gap-6">
-      <div className="flex-shrink-0 md:w-56">
-          <h2 className={`text-2xl font-bold mb-4 text-center md:text-left ${props.getThemeClasses('text-strong')}`}>{props.t('extra_tools')}</h2>
-          <div className="flex flex-col gap-2">
-              {toolNavItems.map(item => (
-                  <button
-                      key={item.id}
-                      onClick={() => setActiveTool(item.id)}
-                      className={`flex items-center w-full justify-start gap-3 py-2 px-4 font-semibold rounded-md transition-colors flex-shrink-0 ${desktopActiveTool === item.id ? `${props.getThemeClasses('bg')} text-white shadow` : 'text-gray-600 hover:bg-gray-100'}`}
-                  >
-                      {item.icon}
-                      <span className="whitespace-nowrap">{item.label}</span>
-                  </button>
-              ))}
-          </div>
-      </div>
-      <div className="flex-grow min-w-0">
-        {toolComponents[desktopActiveTool]}
+      <div className="mt-4 pt-4 border-t">
+        {toolComponents[activeTool]}
       </div>
     </div>
   );

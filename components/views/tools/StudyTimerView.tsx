@@ -120,7 +120,7 @@ const StudyTimerView: React.FC<StudyTimerViewProps> = (props) => {
                     className="w-full p-2 border rounded-lg bg-white"
                     disabled={isTimerActive}
                  >
-                    <option value="">-- No specific task --</option>
+                    <option value="">{t('no_specific_task_option')}</option>
                     {tasks.filter(t => !t.completed).map(task => (
                         <option key={task.id} value={task.id}>{task.text}</option>
                     ))}

@@ -521,32 +521,42 @@ const SubjectSelectionForFlashcards: React.FC<any> = ({ onSelectSubject, ...prop
 
 const SetListView: React.FC<any> = ({ subject, setSelectedSet, setView, onBack, onShare, ...props }) => {
     const { userId, t, tSubject, getThemeClasses, showAppModal, user } = props;
-    const [allSets, setAllSets] = useState<FlashcardSet[]>([]);
+    const [ownedSets, setOwnedSets] = useState<FlashcardSet[]>([]);
+    const [sharedSets, setSharedSets] = useState<FlashcardSet[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [newSetName, setNewSetName] = useState('');
     const [isCombining, setIsCombining] = useState(false);
     const [isCombiningLoading, setIsCombiningLoading] = useState(false);
     const [selectedSetIds, setSelectedSetIds] = useState<string[]>([]);
     
+    const allSets = useMemo(() => [...ownedSets, ...sharedSets], [ownedSets, sharedSets]);
+
     useEffect(() => {
-        if (user.uid === 'guest-user') { setIsLoading(false); return; }
+        if (user.uid === 'guest-user') { 
+            setIsLoading(false); 
+            return; 
+        }
         
+        setIsLoading(true);
         const ownedSetsQuery = db.collection(`artifacts/${appId}/users/${userId}/flashcardDecks`).where('subject', '==', subject).orderBy('createdAt', 'desc');
         const sharedSetsQuery = db.collection(`artifacts/${appId}/public/data/sharedSets`).where('recipientEmail', '==', user.email).where('subject', '==', subject);
 
         const unsubOwned = ownedSetsQuery.onSnapshot(snap => {
             const owned = snap.docs.map(d => ({ id: d.id, ...d.data() } as FlashcardSet));
-            setAllSets(prev => [...owned, ...prev.filter(s => s.isShared)]);
-            setIsLoading(false);
-        }, err => { console.error(err); setIsLoading(false); });
+            setOwnedSets(owned);
+            setIsLoading(false); // Set loading to false after the primary query returns.
+        }, err => { 
+            console.error("Error fetching owned sets:", err); 
+            setIsLoading(false); 
+        });
 
         const unsubShared = sharedSetsQuery.onSnapshot(snap => {
             const shared = snap.docs.map(d => {
                 const data = d.data();
                 return { id: data.setId, name: data.setName, subject: data.subject, ownerId: data.sharerId, cardCount: data.cardCount || 0, createdAt: data.createdAt, isShared: true, sharerName: data.sharerName } as FlashcardSet
             });
-            setAllSets(prev => [...shared, ...prev.filter(s => !s.isShared)]);
-        }, err => console.error(err));
+            setSharedSets(shared);
+        }, err => console.error("Error fetching shared sets:", err));
 
         return () => { unsubOwned(); unsubShared(); };
     }, [userId, user.email, user.uid, subject]);

@@ -1,11 +1,12 @@
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 
 import { auth, db, appId, storage, EmailAuthProvider, Timestamp, arrayUnion, increment } from '../../services/firebase';
 import { translations, subjectDisplayTranslations, defaultHomeLayout } from '../../constants';
-import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan, StudySession, SyncedCalendar, ChatMessage } from '../../types';
+import type { AppUser, FileData, CalendarEvent, ModalContent, Notification, BroadcastData, ToDoTask, AdminSettings, Note, FlashcardSet, StudyPlan, StudySession, SyncedCalendar, ChatMessage, ChatHistory } from '../../types';
 
 import CustomModal from '../ui/Modal';
 import BroadcastModal from '../new/BroadcastModal';
@@ -90,14 +91,18 @@ const MainAppLayout: React.FC<{
     aiChatMessages: ChatMessage[];
     setAiChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
     resetAIChat: () => void;
-}> = ({
-    user, t, tSubject, getThemeClasses, showAppModal, copyTextToClipboard, setIsAvatarModalOpen,
-    handleLogout, currentView, setCurrentView, currentSubject, setCurrentSubject, handleGoHome,
-    subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions,
-    language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, closeAppModal, notifications, unreadCount, showBroadcast,
-    focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, addCalendarEvent, removeCalendarEvent,
-    currentTime, aiChat, aiChatMessages, setAiChatMessages, resetAIChat
-}) => {
+    chatHistories: ChatHistory[];
+    currentChatSessionId: string | null;
+    setCurrentChatSessionId: (id: string | null) => void;
+}> = (props) => {
+    const { 
+        user, t, tSubject, getThemeClasses, showAppModal, copyTextToClipboard, setIsAvatarModalOpen,
+        handleLogout, currentView, setCurrentView, currentSubject, setCurrentSubject, handleGoHome,
+        subjectFiles, searchQuery, setSearchQuery, allEvents, userStudyPlans, recentFiles, allUserFiles, allUserNotes, allUserFlashcardSets, allUserTasks, allStudySessions,
+        language, setLanguage, themeColor, setThemeColor, fontFamily, setFontFamily, onProfileUpdate, onDeleteAccountRequest, onCleanupAccountRequest, onClearCalendarRequest, closeAppModal, notifications, unreadCount, showBroadcast,
+        focusMinutes, setFocusMinutes, breakMinutes, setBreakMinutes, timerMode, setTimerMode, timeLeft, setTimeLeft, isTimerActive, setIsTimerActive, selectedTaskForTimer, setSelectedTaskForTimer, addCalendarEvent, removeCalendarEvent,
+        currentTime, aiChat, aiChatMessages, setAiChatMessages, resetAIChat, chatHistories, currentChatSessionId, setCurrentChatSessionId
+    } = props;
     
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
@@ -117,6 +122,13 @@ const MainAppLayout: React.FC<{
             setInitialToolContext(context);
             setCurrentView('tools');
         }
+    };
+    
+    const handleChatClose = () => {
+        setIsChatOpen(false);
+        // Reset to a new chat session state
+        setCurrentChatSessionId(null);
+        setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome', { userName: user.userName.split(' ')[0], botName: user.aiBotName || 'AI Assistant' }) }]);
     };
 
     // Sidebar Click-outside Handler remains here as it's UI-specific to the layout
@@ -208,13 +220,11 @@ const MainAppLayout: React.FC<{
             {isChatOpen && (
                  <AIChatView
                     user={user}
+                    userId={user.uid}
                     t={t}
                     getThemeClasses={getThemeClasses}
                     showAppModal={showAppModal}
-                    onClose={() => {
-                        setIsChatOpen(false);
-                        resetAIChat();
-                    }}
+                    onClose={handleChatClose}
                     addCalendarEvent={addCalendarEvent}
                     removeCalendarEvent={removeCalendarEvent}
                     tSubject={tSubject}
@@ -224,6 +234,9 @@ const MainAppLayout: React.FC<{
                     chat={aiChat}
                     messages={aiChatMessages}
                     setMessages={setAiChatMessages}
+                    chatHistories={chatHistories}
+                    currentChatSessionId={currentChatSessionId}
+                    setCurrentChatSessionId={setCurrentChatSessionId}
                 />
             )}
         </div>
