@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Timer, ListTodo, BarChart3, FileText, X, Layers } from 'lucide-react';
+import { BookOpen, Timer, ListTodo, BarChart3, FileText, ArrowLeft } from 'lucide-react';
 import FlashcardsView from './tools/FlashcardsView';
 import StudyTimerView from './tools/StudyTimerView';
 import ToDoListView from './tools/ToDoListView';
@@ -42,23 +41,19 @@ interface ToolsViewProps {
 }
 
 const ToolsView: React.FC<ToolsViewProps> = (props) => {
-  const [activeTool, setActiveTool] = useState(props.initialTool || 'flashcards');
-  const [isSessionActive, setIsSessionActive] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(true);
+  const [selectedTool, setSelectedTool] = useState<string | null>(props.initialTool || null);
+  const [isSessionActive, setIsSessionActive] = useState(false); // Special case for flashcard sessions
 
   useEffect(() => {
     if (props.initialTool) {
-      setActiveTool(props.initialTool);
+      setSelectedTool(props.initialTool);
     }
   }, [props.initialTool]);
-
-  const toolComponents: { [key: string]: React.ReactNode } = {
-    flashcards: <FlashcardsView {...props} setIsSessionActive={setIsSessionActive} />,
-    timer: <StudyTimerView {...props} />,
-    todo: <ToDoListView {...props} />,
-    notes: <NotesView {...props} />,
-    progress: <ProgressView {...props} />,
-  };
+  
+  // Flashcard sessions need to take over the whole screen
+  if (isSessionActive && selectedTool === 'flashcards') {
+    return <FlashcardsView {...props} setIsSessionActive={setIsSessionActive} onBack={() => setSelectedTool(null)} />;
+  }
   
   const toolNavItems = [
       { id: 'flashcards', label: props.t('flashcards'), icon: <BookOpen/> },
@@ -68,46 +63,38 @@ const ToolsView: React.FC<ToolsViewProps> = (props) => {
       { id: 'progress', label: props.t('progress'), icon: <BarChart3/> },
   ];
 
-  if (isSessionActive && activeTool === 'flashcards') {
-    return <FlashcardsView {...props} setIsSessionActive={setIsSessionActive} />;
+  if (!selectedTool) {
+      return (
+          <div className="space-y-4 animate-fade-in">
+              <h2 className={`text-2xl font-bold ${props.getThemeClasses('text-strong')}`}>{props.t('extra_tools')}</h2>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {toolNavItems.map(item => (
+                      <button
+                          key={item.id}
+                          onClick={() => setSelectedTool(item.id)}
+                          className={`p-4 flex flex-col items-center justify-center gap-2 rounded-lg font-semibold text-center bg-white shadow-md hover:shadow-lg hover:-translate-y-1 transition-all duration-200 focus:outline-none focus:ring-2 ${props.getThemeClasses('ring')}`}
+                      >
+                          {React.cloneElement(item.icon, { className: `w-10 h-10 mx-auto mb-2 ${props.getThemeClasses('text')}`})}
+                          {item.label}
+                      </button>
+                  ))}
+              </div>
+          </div>
+      );
   }
 
+  const toolComponents: { [key: string]: React.ReactNode } = {
+    flashcards: <FlashcardsView {...props} setIsSessionActive={setIsSessionActive} onBack={() => setSelectedTool(null)} />,
+    timer: <StudyTimerView {...props} onBack={() => setSelectedTool(null)} />,
+    todo: <ToDoListView {...props} onBack={() => setSelectedTool(null)} />,
+    notes: <NotesView {...props} onBack={() => setSelectedTool(null)} />,
+    progress: <ProgressView {...props} onBack={() => setSelectedTool(null)} />,
+  };
+  
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className={`text-2xl font-bold ${props.getThemeClasses('text-strong')}`}>{props.t('extra_tools')}</h2>
-        <button 
-          onClick={() => setIsMenuOpen(!isMenuOpen)} 
-          className="p-2 rounded-lg bg-gray-200 hover:bg-gray-300 transition-colors"
-          aria-label={isMenuOpen ? "Close Menu" : "Open Menu"}
-        >
-          {isMenuOpen ? <X size={20} /> : <Layers size={20} />}
-        </button>
+      <div className="animate-fade-in">
+          {toolComponents[selectedTool]}
       </div>
-
-      {isMenuOpen && (
-        <div className="grid grid-cols-2 gap-4 animate-fade-in">
-          {toolNavItems.map(item => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTool(item.id)}
-              className={`p-4 flex flex-col items-center justify-center gap-2 rounded-lg font-semibold text-center hover:shadow-lg hover:-translate-y-1 transition-all duration-200 focus:outline-none focus:ring-2 ${props.getThemeClasses('ring')}
-                ${activeTool === item.id 
-                  ? `${props.getThemeClasses('bg-light')} border-2 ${props.getThemeClasses('border')}` 
-                  : 'bg-white'
-                }`}
-            >
-              {React.cloneElement(item.icon, { className: `w-10 h-10 mx-auto mb-2 ${props.getThemeClasses('text')}`})}
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-4 pt-4 border-t">
-        {toolComponents[activeTool]}
-      </div>
-    </div>
   );
 };
 

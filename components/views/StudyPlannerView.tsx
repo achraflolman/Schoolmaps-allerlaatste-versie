@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { db, appId, Timestamp } from '../../services/firebase';
@@ -45,7 +43,7 @@ const SharePlanModal: React.FC<{
 
         setIsSharing(true);
         try {
-            const usersRef = db.collection(`artifacts/${appId}/public/data/users`);
+            const usersRef = db.collection(`users`);
             const userQuery = await usersRef.where('email', '==', email.toLowerCase()).limit(1).get();
 
             if (userQuery.empty) {
@@ -65,7 +63,7 @@ const SharePlanModal: React.FC<{
             };
             delete (planDataToShare as any).id; // Remove original ID
 
-            await db.collection(`artifacts/${appId}/public/data/sharedPlans`).add(planDataToShare);
+            await db.collection(`sharedPlans`).add(planDataToShare);
 
             showAppModal({ text: t('share_plan_success', { email }) });
             onClose();
@@ -222,7 +220,7 @@ Return the output as a JSON object. The root object must have a key "schedule" w
             
             if (result.schedule && result.schedule.length > 0) {
                  const batch = db.batch();
-                 const planRef = db.collection(`artifacts/${appId}/users/${userId}/studyPlans`).doc();
+                 const planRef = db.collection(`users/${userId}/studyPlans`).doc();
 
                  batch.set(planRef, {
                     userId,
@@ -239,7 +237,7 @@ Return the output as a JSON object. The root object must have a key "schedule" w
                     const eventEndDate = endTimeStr ? new Date(`${item.day}T${endTimeStr}`) : new Date(eventDate.getTime() + 90 * 60 * 1000);
 
                     if (!isNaN(eventDate.getTime())) {
-                        const eventRef = db.collection(`artifacts/${appId}/users/${userId}/calendarEvents`).doc();
+                        const eventRef = db.collection(`users/${userId}/calendarEvents`).doc();
                         batch.set(eventRef, {
                             title: `${t('planner_task')}: ${item.task.substring(0, 50)}${item.task.length > 50 ? '...' : ''}`,
                             description: `${t('planner_tip')}: ${item.tip}`,
@@ -323,7 +321,7 @@ const StudyPlannerView: React.FC<StudyPlannerViewProps> = (props) => {
     const [sharedPlans, setSharedPlans] = useState<StudyPlan[]>([]);
     
     useEffect(() => {
-        const q = db.collection(`artifacts/${appId}/public/data/sharedPlans`).where('recipientEmail', '==', user.email);
+        const q = db.collection(`sharedPlans`).where('recipientEmail', '==', user.email);
         const unsubscribe = q.onSnapshot(snapshot => {
             const fetchedPlans = snapshot.docs.map(doc => {
                 const data = doc.data();
@@ -351,9 +349,9 @@ const StudyPlannerView: React.FC<StudyPlannerViewProps> = (props) => {
             text: t('delete_plan_confirm'),
             confirmAction: async () => {
                 if (isOwned) {
-                    await db.doc(`artifacts/${appId}/users/${userId}/studyPlans/${plan.id}`).delete();
+                    await db.doc(`users/${userId}/studyPlans/${plan.id}`).delete();
                 } else {
-                    await db.doc(`artifacts/${appId}/public/data/sharedPlans/${plan.id}`).delete();
+                    await db.doc(`sharedPlans/${plan.id}`).delete();
                 }
                 showAppModal({ text: t('plan_deleted_success') });
             },
@@ -388,7 +386,7 @@ const StudyPlannerView: React.FC<StudyPlannerViewProps> = (props) => {
                     const plan = allPlans.find(p => p.id === planId);
                     if (plan) {
                         const collection = plan.isShared ? 'sharedPlans' : 'studyPlans';
-                        const path = plan.isShared ? `artifacts/${appId}/public/data/${collection}/${planId}` : `artifacts/${appId}/users/${userId}/${collection}/${planId}`;
+                        const path = plan.isShared ? `${collection}/${planId}` : `users/${userId}/${collection}/${planId}`;
                         const docRef = db.doc(path);
                         batch.delete(docRef);
                     }

@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { db, appId, Timestamp } from '../../services/firebase';
 import type { AppUser, Feedback, FeedbackReply } from '../../types';
@@ -21,7 +19,7 @@ const FeedbackView: React.FC<FeedbackViewProps> = ({ user, t, getThemeClasses, s
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
     useEffect(() => {
-        const q = db.collection(`artifacts/${appId}/public/data/feedback`)
+        const q = db.collection(`feedback`)
             .where('userId', '==', user.uid)
             .orderBy('createdAt', 'desc');
 
@@ -43,7 +41,7 @@ const FeedbackView: React.FC<FeedbackViewProps> = ({ user, t, getThemeClasses, s
 
         setIsSubmitting(true);
         try {
-            await db.collection(`artifacts/${appId}/public/data/feedback`).add({
+            await db.collection(`feedback`).add({
                 userId: user.uid,
                 userName: user.userName,
                 userEmail: user.email,

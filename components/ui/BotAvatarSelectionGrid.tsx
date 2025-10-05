@@ -1,8 +1,9 @@
+
 import React from 'react';
 import { CheckCircle } from 'lucide-react';
-import { availableAvatars } from '../../constants/avatars';
+import { availableBotAvatars } from '../../constants/botAvatars';
 
-interface AvatarSelectionGridProps {
+interface BotAvatarSelectionGridProps {
   selectedAvatar: string | null;
   setSelectedAvatar: (url: string | null) => void;
   userName: string;
@@ -10,13 +11,12 @@ interface AvatarSelectionGridProps {
   getThemeClasses: (variant: string) => string;
 }
 
-const AvatarSelectionGrid: React.FC<AvatarSelectionGridProps> = ({ selectedAvatar, setSelectedAvatar, userName, t, getThemeClasses }) => {
-  const isNoAvatarSelected = selectedAvatar === null || selectedAvatar === 'NONE';
-  const initial = userName ? userName.charAt(0).toUpperCase() : 'U';
+const BotAvatarSelectionGrid: React.FC<BotAvatarSelectionGridProps> = ({ selectedAvatar, setSelectedAvatar, userName, t, getThemeClasses }) => {
+  const isNoAvatarSelected = selectedAvatar === null;
+  const initial = userName ? userName.charAt(0).toUpperCase() : 'AI';
 
   return (
     <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 max-h-80 overflow-y-auto p-2 bg-gray-50 rounded-lg">
-      {/* No Avatar Option */}
       <div
         onClick={() => setSelectedAvatar(null)}
         className={`relative cursor-pointer p-2 rounded-lg transition-all duration-200 ${isNoAvatarSelected ? 'ring-2 ' + getThemeClasses('ring') : ''}`}
@@ -29,9 +29,7 @@ const AvatarSelectionGrid: React.FC<AvatarSelectionGridProps> = ({ selectedAvata
         )}
         <p className="text-xs text-center font-semibold mt-1">{t('no_avatar_option')}</p>
       </div>
-
-      {/* Avatar List */}
-      {availableAvatars.map((avatarUrl) => (
+      {availableBotAvatars.map((avatarUrl) => (
         <div
           key={avatarUrl}
           onClick={() => setSelectedAvatar(avatarUrl)}
@@ -47,4 +45,4 @@ const AvatarSelectionGrid: React.FC<AvatarSelectionGridProps> = ({ selectedAvata
   );
 };
 
-export default AvatarSelectionGrid;
+export default BotAvatarSelectionGrid;

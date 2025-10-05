@@ -43,7 +43,7 @@ const SubjectView: React.FC<SubjectViewProps> = ({ user, currentSubject, subject
             await storageRef.put(selectedFile);
             const fileUrl = await storageRef.getDownloadURL();
 
-            await db.collection(`artifacts/${appId}/public/data/files`).add({
+            await db.collection(`files`).add({
                 title: newFileTitle,
                 description: newFileDescription,
                 subject: currentSubject,
@@ -78,7 +78,7 @@ const SubjectView: React.FC<SubjectViewProps> = ({ user, currentSubject, subject
             confirmAction: async () => {
                 try {
                     for (const fileId of selectedFileIds) {
-                        const fileDocRef = db.doc(`artifacts/${appId}/public/data/files/${fileId}`);
+                        const fileDocRef = db.doc(`files/${fileId}`);
                         const fileDoc = await fileDocRef.get();
                         if (fileDoc.exists) {
                             const fileData = fileDoc.data() as FileData;

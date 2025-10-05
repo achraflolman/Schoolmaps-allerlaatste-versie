@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { db, appId, Timestamp } from '../../../services/firebase';
 import type { ToDoTask, AppUser, ModalContent } from '../../../types';
-import { PlusCircle, Trash2, Bell, Loader2, Calendar, Repeat } from 'lucide-react';
+import { PlusCircle, Trash2, Bell, Loader2, Calendar, Repeat, ArrowLeft } from 'lucide-react';
 
 interface ToDoListViewProps {
   userId: string;
@@ -10,6 +9,7 @@ interface ToDoListViewProps {
   t: (key: string) => string;
   getThemeClasses: (variant: string) => string;
   showAppModal: (content: ModalContent) => void;
+  onBack?: () => void;
 }
 
 // Helper to get a YYYY-MM-DD string from a Date object
@@ -91,7 +91,7 @@ const ReminderModal: React.FC<{
 };
 
 
-const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeClasses, showAppModal }) => {
+const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeClasses, showAppModal, onBack }) => {
   const [allTasks, setAllTasks] = useState<ToDoTask[]>([]);
   const [newTaskText, setNewTaskText] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
@@ -121,7 +121,7 @@ const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeCl
 
   useEffect(() => {
     if (user.uid === 'guest-user') return;
-    const q = db.collection(`artifacts/${appId}/users/${userId}/tasks`).orderBy('createdAt', 'desc');
+    const q = db.collection(`users/${userId}/tasks`).orderBy('createdAt', 'desc');
     const unsubscribe = q.onSnapshot(snapshot => {
       const fetchedTasks = snapshot.docs.map(d => ({id: d.id, ...d.data()} as ToDoTask));
       setAllTasks(fetchedTasks);
@@ -147,17 +147,20 @@ const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeCl
     }
     if(!newTaskText.trim()) return showAppModal({text: t('error_empty_task')});
     
-    const taskData: Omit<ToDoTask, 'id'> = {
+    const taskData: any = {
         text: newTaskText,
         completed: false,
         ownerId: userId,
         createdAt: Timestamp.now(),
         recurring: isRecurring ? 'daily' : null,
-        // If recurring, no due date is needed. If not, use the selected one or default to today.
-        dueDate: isRecurring ? undefined : Timestamp.fromDate(new Date((newDueDate || toLocalDateString(new Date())) + 'T00:00:00'))
     };
 
-    await db.collection(`artifacts/${appId}/users/${userId}/tasks`).add(taskData);
+    if (!isRecurring) {
+        // Only add dueDate if the task is not recurring
+        taskData.dueDate = Timestamp.fromDate(new Date((newDueDate || toLocalDateString(new Date())) + 'T00:00:00'));
+    }
+
+    await db.collection(`users/${userId}/tasks`).add(taskData);
     setNewTaskText('');
     setNewDueDate('');
     setIsRecurring(false);
@@ -170,14 +173,14 @@ const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeCl
         completed: isCompleted,
         completedAt: isCompleted ? Timestamp.now() : undefined,
     };
-    await db.doc(`artifacts/${appId}/users/${userId}/tasks/${task.id}`).update(updateData);
+    await db.doc(`users/${userId}/tasks/${task.id}`).update(updateData);
   };
   
   const handleDeleteTask = (id: string) => {
     showAppModal({
       text: t('confirm_delete_task'),
       confirmAction: async () => {
-        await db.doc(`artifacts/${appId}/users/${userId}/tasks/${id}`).delete();
+        await db.doc(`users/${userId}/tasks/${id}`).delete();
         if (reminderTimeoutsRef.current.has(id)) {
             clearTimeout(reminderTimeoutsRef.current.get(id));
             reminderTimeoutsRef.current.delete(id);
@@ -196,7 +199,7 @@ const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeCl
         }
     }
     const reminderAt = reminderDateTime ? Timestamp.fromDate(reminderDateTime) : null;
-    await db.doc(`artifacts/${appId}/users/${userId}/tasks/${task.id}`).update({ reminderAt });
+    await db.doc(`users/${userId}/tasks/${task.id}`).update({ reminderAt });
     setIsReminderModalOpen(false);
   };
   
@@ -252,6 +255,11 @@ const ToDoListView: React.FC<ToDoListViewProps> = ({ userId, user, t, getThemeCl
   return (
     <>
       {selectedTask && <ReminderModal task={selectedTask} isOpen={isReminderModalOpen} onClose={() => setIsReminderModalOpen(false)} onSave={handleSaveReminder} t={t} getThemeClasses={getThemeClasses} />}
+      <div className="flex items-center mb-4">
+        {onBack && <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-200 transition-colors"><ArrowLeft/></button>}
+        <h3 className={`font-bold text-xl flex-grow text-center ${getThemeClasses('text-strong')}`}>{t('todo_list')}</h3>
+        <div className="w-9 h-9"></div> {/* Placeholder for centering */}
+      </div>
       <div className={`p-4 rounded-lg shadow-inner ${getThemeClasses('bg-light')} space-y-4`}>
           <form onSubmit={handleAddTask} className="p-3 bg-white rounded-lg shadow-sm space-y-2">
               <input type="text" value={newTaskText} onChange={e => setNewTaskText(e.target.value)} placeholder={t('add_task_placeholder')} className="w-full p-2 border rounded-lg"/>

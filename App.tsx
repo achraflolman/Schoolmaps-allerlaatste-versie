@@ -269,7 +269,8 @@ const App: React.FC = () => {
     const tSubject = useCallback((subjectKey: string): string => {
         const lang = language as keyof typeof subjectDisplayTranslations;
         if (!subjectKey) return ''; // Guard against null/undefined keys
-        return subjectDisplayTranslations[lang]?.[subjectKey] || subjectDisplayTranslations['nl']?.[subjectKey] || subjectKey.charAt(0).toUpperCase() + subjectKey.slice(1).replace(/_/g, ' ');
+        const lowerKey = subjectKey.toLowerCase();
+        return subjectDisplayTranslations[lang]?.[lowerKey] || subjectDisplayTranslations['nl']?.[lowerKey] || lowerKey.charAt(0).toUpperCase() + lowerKey.slice(1).replace(/_/g, ' ');
     }, [language]);
 
     const showAppModal = useCallback((content: ModalContent) => setModalContent(content), []);
@@ -286,7 +287,7 @@ const App: React.FC = () => {
     const isSyncOnCooldown = useRef(false);
 
     const showBroadcastModal = useCallback(async (broadcastId: string) => {
-        const broadcastDocRef = db.doc(`artifacts/${appId}/public/data/broadcasts/${broadcastId}`);
+        const broadcastDocRef = db.doc(`broadcasts/${broadcastId}`);
         const broadcastDoc = await broadcastDocRef.get();
         if (broadcastDoc.exists) {
             setSelectedBroadcast(broadcastDoc.data() as BroadcastData);
@@ -341,7 +342,7 @@ const App: React.FC = () => {
         showAppModal({ text: t(completedMode === 'focus' ? 'focus_session_complete' : 'break_session_complete')});
         
         if (completedMode === 'focus' && user?.uid && user.uid !== 'guest-user') {
-            db.collection(`artifacts/${appId}/users/${user.uid}/studySessions`).add({
+            db.collection(`users/${user.uid}/studySessions`).add({
                 userId: user.uid,
                 date: Timestamp.now(),
                 durationMinutes: focusMinutes,
@@ -596,7 +597,9 @@ const App: React.FC = () => {
     // Data fetching effect, with stable dependencies
     useEffect(() => {
         const currentUid = user?.uid;
-        if (!currentUid || currentUid === 'guest-user' || isAdmin) {
+    
+        // Abort if no user is logged in
+        if (!currentUid || currentUid === 'guest-user') {
             setUserEvents([]);
             setRecentFiles([]);
             setNotifications([]);
@@ -610,11 +613,11 @@ const App: React.FC = () => {
             setChatHistories([]);
             return;
         }
-
+    
         const unsubscribers: Unsubscribe[] = [];
         
-        // Profile listener
-        const userDocRef = db.doc(`artifacts/${appId}/public/data/users/${currentUid}`);
+        // Profile listener (for BOTH regular users and admin)
+        const userDocRef = db.doc(`users/${currentUid}`);
         unsubscribers.push(userDocRef.onSnapshot(doc => {
             if (doc.exists) {
                 setUser(prevUser => {
@@ -624,43 +627,62 @@ const App: React.FC = () => {
                 });
             }
         }));
-
-        const eventsQuery = db.collection(`artifacts/${appId}/users/${currentUid}/calendarEvents`).orderBy('start', 'asc');
+    
+        // If user is admin, we are done after setting up the profile listener.
+        // We also clear out any lingering data from a previous non-admin session.
+        if (isAdmin) {
+            setUserEvents([]);
+            setRecentFiles([]);
+            setNotifications([]);
+            setAllUserFiles([]);
+            setAllUserNotes([]);
+            setAllUserFlashcardSets([]);
+            setUserStudyPlans([]);
+            setAllUserTasks([]);
+            setAllStudySessions([]);
+            setSyncedEvents([]);
+            setChatHistories([]);
+            return () => unsubscribers.forEach(unsub => unsub());
+        }
+    
+        // --- From here on, it's REGULAR USER data fetching ---
+    
+        const eventsQuery = db.collection(`users/${currentUid}/calendarEvents`).orderBy('start', 'asc');
         unsubscribers.push(eventsQuery.onSnapshot((snapshot) => {
             const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CalendarEvent));
             setUserEvents(fetchedEvents);
         }));
         
-        const plansQuery = db.collection(`artifacts/${appId}/users/${currentUid}/studyPlans`).orderBy('createdAt', 'desc');
+        const plansQuery = db.collection(`users/${currentUid}/studyPlans`).orderBy('createdAt', 'desc');
         unsubscribers.push(plansQuery.onSnapshot((snapshot) => {
             const fetchedPlans = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudyPlan));
             setUserStudyPlans(fetchedPlans);
         }));
-
-        const filesQuery = db.collection(`artifacts/${appId}/public/data/files`).where('ownerId', '==', currentUid).orderBy('createdAt', 'desc').limit(5);
+    
+        const filesQuery = db.collection(`files`).where('ownerId', '==', currentUid).orderBy('createdAt', 'desc').limit(5);
         unsubscribers.push(filesQuery.onSnapshot((snapshot) => {
             const fetchedFiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FileData));
             setRecentFiles(fetchedFiles);
         }));
         
-        const notifsQuery = db.collection(`artifacts/${appId}/users/${currentUid}/notifications`).orderBy('createdAt', 'desc').limit(50);
+        const notifsQuery = db.collection(`users/${currentUid}/notifications`).orderBy('createdAt', 'desc').limit(50);
         unsubscribers.push(notifsQuery.onSnapshot(snapshot => {
             const fetchedNotifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
             setNotifications(fetchedNotifs);
         }));
-
+    
         // Listen for new broadcasts
-        const broadcastQuery = db.collection(`artifacts/${appId}/public/data/broadcasts`).orderBy('createdAt', 'desc').limit(10);
+        const broadcastQuery = db.collection(`broadcasts`).orderBy('createdAt', 'desc').limit(10);
         unsubscribers.push(broadcastQuery.onSnapshot(async (broadcastSnapshot) => {
             const localUser = latestUser.current;
             if (broadcastSnapshot.empty || !localUser?.uid || isAdmin) return;
-
-            const userNotifsRef = db.collection(`artifacts/${appId}/users/${localUser.uid}/notifications`);
+    
+            const userNotifsRef = db.collection(`users/${localUser.uid}/notifications`);
             const existingBroadcastNotifsQuery = userNotifsRef.where('broadcastId', '!=', null);
             const existingBroadcastNotifsSnapshot = await existingBroadcastNotifsQuery.get();
             const existingBroadcastIds = new Set(existingBroadcastNotifsSnapshot.docs.map(doc => doc.data().broadcastId));
             const dismissedBroadcastIds = localUser.dismissedBroadcastIds || [];
-
+    
             const batch = db.batch();
             let hasNewBroadcasts = false;
             
@@ -682,21 +704,21 @@ const App: React.FC = () => {
                 }
               }
             });
-
+    
             if (hasNewBroadcasts) await batch.commit();
         }));
         
         // Listen for feedback replies
-        const feedbackQuery = db.collection(`artifacts/${appId}/public/data/feedback`).where('userId', '==', currentUid);
+        const feedbackQuery = db.collection(`feedback`).where('userId', '==', currentUid);
         unsubscribers.push(feedbackQuery.onSnapshot(async (feedbackSnapshot) => {
             const localUser = latestUser.current;
             if (!localUser?.uid) return;
-            const userNotifsRef = db.collection(`artifacts/${appId}/users/${localUser.uid}/notifications`);
+            const userNotifsRef = db.collection(`users/${localUser.uid}/notifications`);
             const existingFeedbackNotifsQuery = userNotifsRef.where('feedbackId', '!=', null);
             const existingNotifsSnapshot = await existingFeedbackNotifsQuery.get();
             const existingFeedbackIds = new Set(existingNotifsSnapshot.docs.map(doc => doc.data().feedbackId));
             const dismissedFeedbackIds = localUser.dismissedFeedbackIds || [];
-
+    
             const batch = db.batch();
             let hasNewReplies = false;
             feedbackSnapshot.docs.forEach(doc => {
@@ -714,50 +736,17 @@ const App: React.FC = () => {
                     hasNewReplies = true;
                 }
             });
-
+    
             if (hasNewReplies) await batch.commit();
         }));
-
-        // Listen for new shared sets to create notifications
-        const sharedSetsQuery = db.collection(`artifacts/${appId}/public/data/sharedSets`).where('recipientEmail', '==', latestUser.current?.email);
-        unsubscribers.push(sharedSetsQuery.onSnapshot(async (snapshot) => {
-            const localUser = latestUser.current;
-            if (snapshot.empty || !localUser?.uid) return;
-
-            const userNotifsRef = db.collection(`artifacts/${appId}/users/${localUser.uid}/notifications`);
-            const existingShareNotifsQuery = userNotifsRef.where('flashcardSetId', '!=', null);
-            const existingNotifsSnapshot = await existingShareNotifsQuery.get();
-            const existingSetIds = new Set(existingNotifsSnapshot.docs.map(doc => doc.data().flashcardSetId));
-
-            const batch = db.batch();
-            let hasNewShares = false;
-
-            snapshot.docChanges().forEach((change) => {
-                if (change.type === 'added') {
-                    const shareData = change.doc.data();
-                    const setId = shareData.setId;
-                    if (!existingSetIds.has(setId)) {
-                        const newNotifRef = userNotifsRef.doc();
-                        batch.set(newNotifRef, {
-                            title: tRef.current('notification_flashcard_share_title'),
-                            text: tRef.current('notification_flashcard_share_text', { name: shareData.sharerName, setName: shareData.setName, subject: tSubjectRef.current(shareData.subject) }),
-                            type: 'flashcard_share', read: false,
-                            createdAt: shareData.createdAt, flashcardSetId: setId, subject: shareData.subject,
-                        });
-                        hasNewShares = true;
-                    }
-                }
-            });
-            if (hasNewShares) await batch.commit();
-        }));
-        
+    
         // Listen for new shared plans to create notifications
-        const sharedPlansQuery = db.collection(`artifacts/${appId}/public/data/sharedPlans`).where('recipientEmail', '==', latestUser.current?.email);
+        const sharedPlansQuery = db.collection(`sharedPlans`).where('recipientEmail', '==', latestUser.current?.email);
         unsubscribers.push(sharedPlansQuery.onSnapshot(async (snapshot) => {
             const localUser = latestUser.current;
             if (snapshot.empty || !localUser?.uid) return;
         
-            const userNotifsRef = db.collection(`artifacts/${appId}/users/${localUser.uid}/notifications`);
+            const userNotifsRef = db.collection(`users/${localUser.uid}/notifications`);
             const existingPlanNotifsQuery = userNotifsRef.where('planId', '!=', null);
             const existingNotifsSnapshot = await existingPlanNotifsQuery.get();
             const existingPlanIds = new Set(existingNotifsSnapshot.docs.map(doc => doc.data().planId));
@@ -783,26 +772,61 @@ const App: React.FC = () => {
             });
             if (hasNewShares) await batch.commit();
         }));
+    
+        // Listen for new shared sets to create notifications
+        const sharedSetsQuery = db.collection(`sharedSets`).where('recipientEmail', '==', latestUser.current?.email);
+        unsubscribers.push(sharedSetsQuery.onSnapshot(async (snapshot) => {
+            const localUser = latestUser.current;
+            if (snapshot.empty || !localUser?.uid) return;
+        
+            const userNotifsRef = db.collection(`users/${localUser.uid}/notifications`);
+            const existingSetNotifsQuery = userNotifsRef.where('flashcardSetId', '!=', null);
+            const existingNotifsSnapshot = await existingSetNotifsQuery.get();
+            const existingSetIds = new Set(existingNotifsSnapshot.docs.map(doc => doc.data().flashcardSetId));
+        
+            const batch = db.batch();
+            let hasNewShares = false;
+        
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added') {
+                    const shareData = change.doc.data();
+                    const setId = change.doc.id;
+                    if (!existingSetIds.has(setId)) {
+                        const newNotifRef = userNotifsRef.doc();
+                        batch.set(newNotifRef, {
+                            title: tRef.current('notification_flashcard_share_title'),
+                            text: tRef.current('notification_flashcard_share_text', { name: shareData.sharerName, setName: shareData.name, subject: tSubjectRef.current(shareData.subject) }),
+                            type: 'flashcard_share', read: false,
+                            createdAt: shareData.sharedAt || Timestamp.now(), // Fallback to prevent crash
+                            flashcardSetId: setId,
+                            subject: shareData.subject
+                        });
+                        hasNewShares = true;
+                    }
+                }
+            });
+            if (hasNewShares) await batch.commit();
+        }));
 
         // Fetch all data for progress view & home dashboard
-        const allFilesQuery = db.collection(`artifacts/${appId}/public/data/files`).where('ownerId', '==', currentUid);
+        const allFilesQuery = db.collection(`files`).where('ownerId', '==', currentUid);
         unsubscribers.push(allFilesQuery.onSnapshot((snapshot) => setAllUserFiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FileData)))));
-
-        const allNotesQuery = db.collection(`artifacts/${appId}/users/${currentUid}/notes`);
+    
+        const allNotesQuery = db.collection(`users/${currentUid}/notes`);
         unsubscribers.push(allNotesQuery.onSnapshot((snapshot) => setAllUserNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note)))));
-
-        const allSetsQuery = db.collection(`artifacts/${appId}/users/${currentUid}/flashcardDecks`);
+    
+        const allSetsQuery = db.collection(`users/${currentUid}/flashcardDecks`);
         unsubscribers.push(allSetsQuery.onSnapshot((snapshot) => setAllUserFlashcardSets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FlashcardSet)))));
-
-        const allTasksQuery = db.collection(`artifacts/${appId}/users/${currentUid}/tasks`);
+    
+        const allTasksQuery = db.collection(`users/${currentUid}/tasks`);
         unsubscribers.push(allTasksQuery.onSnapshot((snapshot) => setAllUserTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ToDoTask)))));
-
-        const allSessionsQuery = db.collection(`artifacts/${appId}/users/${currentUid}/studySessions`);
+    
+        const allSessionsQuery = db.collection(`users/${currentUid}/studySessions`);
         unsubscribers.push(allSessionsQuery.onSnapshot((snapshot) => setAllStudySessions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudySession)))));
         
-        const historiesQuery = db.collection(`artifacts/${appId}/users/${currentUid}/chatHistories`).orderBy('updatedAt', 'desc');
+        const historiesQuery = db.collection(`users/${currentUid}/chatHistories`).orderBy('updatedAt', 'desc');
         unsubscribers.push(historiesQuery.onSnapshot(snapshot => setChatHistories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatHistory)))));
-
+    
         return () => unsubscribers.forEach(unsub => unsub());
     }, [user?.uid, isAdmin]);
     
@@ -823,7 +847,7 @@ const App: React.FC = () => {
             return;
         }
 
-        const filesQuery = db.collection(`artifacts/${appId}/public/data/files`)
+        const filesQuery = db.collection(`files`)
           .where('ownerId', '==', user.uid)
           .where('subject', '==', currentSubject)
           .orderBy('createdAt', 'desc');
@@ -851,7 +875,7 @@ const App: React.FC = () => {
         const uid = auth.currentUser.uid;
         
         try {
-            const userDocRef = db.doc(`artifacts/${appId}/public/data/users/${uid}`);
+            const userDocRef = db.doc(`users/${uid}`);
             await userDocRef.update(updatedData);
         } catch (error) {
             showAppModal({ text: t('error_save_settings_failed') });
@@ -892,7 +916,7 @@ const App: React.FC = () => {
     const handleAdminSettingsUpdate = useCallback(async (updatedData: Partial<AdminSettings>) => {
         setAdminSettings(currentSettings => currentSettings ? { ...currentSettings, ...updatedData } : null);
         try {
-            const settingsDocRef = db.doc(`artifacts/${appId}/public/data/adminSettings/global`);
+            const settingsDocRef = db.doc(`adminSettings/global`);
             await settingsDocRef.update(updatedData);
         } catch (error) {
             console.error("Failed to save admin settings", error);
@@ -930,7 +954,7 @@ const App: React.FC = () => {
         };
     
         // Delete user files from storage and firestore
-        const filesQuery = db.collection(`artifacts/${appId}/public/data/files`).where('ownerId', '==', uid);
+        const filesQuery = db.collection(`files`).where('ownerId', '==', uid);
         const filesSnapshot = await filesQuery.get();
         if (!filesSnapshot.empty) {
             const deletePromises = filesSnapshot.docs.map(doc => {
@@ -945,7 +969,7 @@ const App: React.FC = () => {
         }
     
         // Delete all private user collections
-        const userRoot = `artifacts/${appId}/users/${uid}`;
+        const userRoot = `users/${uid}`;
         const collectionsToDelete = ['calendarEvents', 'notes', 'tasks', 'notifications', 'studyPlans', 'studySessions', 'chatHistories'];
         for (const coll of collectionsToDelete) {
             await batchDelete(db.collection(`${userRoot}/${coll}`));
@@ -962,7 +986,7 @@ const App: React.FC = () => {
         }
     
         // Delete user's feedback
-        await batchDelete(db.collection(`artifacts/${appId}/public/data/feedback`).where('userId', '==', uid));
+        await batchDelete(db.collection(`feedback`).where('userId', '==', uid));
     };
 
     const handleCleanupAccount = async () => {
@@ -994,7 +1018,7 @@ const App: React.FC = () => {
         showAppModal({ text: t('clear_calendar_progress'), confirmAction: undefined, cancelAction: undefined });
     
         try {
-            const calendarRef = db.collection(`artifacts/${appId}/users/${auth.currentUser.uid}/calendarEvents`);
+            const calendarRef = db.collection(`users/${auth.currentUser.uid}/calendarEvents`);
             const snapshot = await calendarRef.get();
             if (!snapshot.empty) {
                 const batch = db.batch();
@@ -1012,7 +1036,7 @@ const App: React.FC = () => {
 
     const deleteUserData = async (uid: string) => {
         await cleanupUserData(uid); // Use the same cleanup logic
-        await db.doc(`artifacts/${appId}/public/data/users/${uid}`).delete(); // Then delete the user doc
+        await db.doc(`users/${uid}`).delete(); // Then delete the user doc
     };
 
     const handleDeleteAccount = async () => {
@@ -1038,7 +1062,7 @@ const App: React.FC = () => {
             return "Error: User not found.";
         }
         try {
-            const docRef = await db.collection(`artifacts/${appId}/users/${user.uid}/calendarEvents`).add({
+            const docRef = await db.collection(`users/${user.uid}/calendarEvents`).add({
                 ...eventData,
                 ownerId: user.uid,
                 createdAt: Timestamp.now(),
@@ -1055,7 +1079,7 @@ const App: React.FC = () => {
             return "Error: User not found.";
         }
         try {
-            const eventsRef = db.collection(`artifacts/${appId}/users/${user.uid}/calendarEvents`);
+            const eventsRef = db.collection(`users/${user.uid}/calendarEvents`);
 
             // Create a date range for the entire day
             const startOfDay = new Date(`${date}T00:00:00`);
@@ -1119,7 +1143,7 @@ const App: React.FC = () => {
             }
 
             setAppStatus('initializing');
-            const userDocRef = db.doc(`artifacts/${appId}/public/data/users/${firebaseUser.uid}`);
+            const userDocRef = db.doc(`users/${firebaseUser.uid}`);
 
             try {
                 const docSnap = await userDocRef.get();
@@ -1143,21 +1167,26 @@ const App: React.FC = () => {
                     if (!lastLogin || lastLogin.getTime() < today.getTime()) {
                         const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
                         let newStreak = userData.streakCount || 0;
-                        if(lastLogin && lastLogin.getTime() === yesterday.getTime()){
-                            newStreak++;
-                        } else {
+
+                        if (lastLogin && lastLogin.getTime() < yesterday.getTime()) {
                             if (newStreak > 0) {
-                                db.collection(`artifacts/${appId}/users/${firebaseUser.uid}/notifications`).doc().set({
+                                db.collection(`users/${firebaseUser.uid}/notifications`).doc().set({
                                     title: t('streak_lost_notification_title'),
                                     text: t('streak_lost_notification_text', { count: newStreak }),
                                     type: 'streak', read: false, createdAt: Timestamp.now()
                                 });
                             }
                             newStreak = 1;
+                        } else if (lastLogin && lastLogin.getTime() === yesterday.getTime()) {
+                            newStreak++;
+                        } else if (!lastLogin) {
+                            newStreak = 1;
                         }
+                        
                         profileUpdate.streakCount = newStreak;
                         profileUpdate.lastLoginDate = Timestamp.fromDate(today);
                     }
+
 
                     if (Object.keys(profileUpdate).length > 0) {
                        await userDocRef.update(profileUpdate);
@@ -1166,7 +1195,7 @@ const App: React.FC = () => {
                     const finalUser: AppUser = { ...userData, ...profileUpdate, uid: firebaseUser.uid, email: userData.email || firebaseUser.email || '' };
                     setUser(finalUser);
                     
-                    db.collection(`artifacts/${appId}/users/${firebaseUser.uid}/chatHistories`).where('updatedAt', '<', Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
+                    db.collection(`users/${firebaseUser.uid}/chatHistories`).where('updatedAt', '<', Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
                         .get().then(s => { if (!s.empty) { const b = db.batch(); s.docs.forEach(d => b.delete(d.ref)); b.commit(); }});
 
                     setShowAiSetup(finalUser.hasCompletedOnboarding === false);
@@ -1189,12 +1218,12 @@ const App: React.FC = () => {
                 
                 if (firebaseUser.email === 'admin1069@gmail.com') {
                     setIsAdmin(true);
-                    const settingsDoc = await db.doc(`artifacts/${appId}/public/data/adminSettings/global`).get();
+                    const settingsDoc = await db.doc(`adminSettings/global`).get();
                     if (settingsDoc.exists) {
                         setAdminSettings(settingsDoc.data() as AdminSettings);
                     } else {
                          const defaultAdminSettings: AdminSettings = { themePreference: 'emerald', pinProtectionEnabled: true, fontPreference: 'inter' };
-                         await db.doc(`artifacts/${appId}/public/data/adminSettings/global`).set(defaultAdminSettings);
+                         await db.doc(`adminSettings/global`).set(defaultAdminSettings);
                          setAdminSettings(defaultAdminSettings);
                     }
                 } else {
@@ -1239,7 +1268,8 @@ const App: React.FC = () => {
             };
 
             const tools: Tool[] = [{ functionDeclarations: [addEventTool, removeEventTool, getEventsTool, getStudyPlansTool, getStudyPlanDetailsTool] }];
-            const systemInstructionText = t('ai_system_instruction', { botName: user.aiBotName || 'AI Assistent', userName: user.userName, subjects: availableSubjects.join(', ') });
+            const todayString = new Date().toISOString().split('T')[0];
+            const systemInstructionText = t('ai_system_instruction', { botName: user.aiBotName || 'AI Assistent', userName: user.userName, subjects: availableSubjects.join(', '), todayDate: todayString });
             
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const chatInstance = ai.chats.create({ model: 'gemini-2.5-flash', config: { systemInstruction: systemInstructionText, tools: tools } });
@@ -1332,6 +1362,8 @@ const App: React.FC = () => {
                  .prose blockquote { border-left: 4px solid #ccc; padding-left: 1em; margin-left: 0; font-style: italic; color: #6b7280; }
                  .prose strong { font-weight: 600; }
                  .prose a { color: #2563eb; text-decoration: underline; }
+                 .ai-chat-button { transition: bottom 0.3s ease-in-out; }
+                 body.drawing-editor-active .ai-chat-button { bottom: 6.5rem; }
              `}</style>
             {modalContent && <CustomModal {...{ ...modalContent, onClose: closeAppModal, t, getThemeClasses }} />}
             <BroadcastModal isOpen={isBroadcastModalOpen} onClose={() => setIsBroadcastModalOpen(false)} broadcast={selectedBroadcast} t={t} getThemeClasses={getThemeClasses} />

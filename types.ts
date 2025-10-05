@@ -1,5 +1,3 @@
-
-
 import type { FirebaseTimestamp } from './services/firebase';
 
 export interface Flashcard {
@@ -153,11 +151,14 @@ export interface AdminSettings {
 export interface Note {
     id: string;
     title: string;
-    content: string;
+    content: string; // For text notes: plain text. For drawing notes: JSON string of objects.
     subject: string;
     ownerId: string;
     createdAt: FirebaseTimestamp;
     updatedAt?: FirebaseTimestamp;
+    noteType?: 'text' | 'drawing'; // New property
+    background?: 'blank' | 'grid' | 'lines'; // New property for drawing notes
+    backgroundColor?: string; // New property for drawing notes page color
 }
 
 export interface FlashcardSet {

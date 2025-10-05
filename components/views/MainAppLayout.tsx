@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 
@@ -170,7 +167,7 @@ const MainAppLayout: React.FC<{
     
     return (
         <div className={`flex h-screen w-full`}>
-             <Sidebar {...{ user, isSidebarOpen, setIsSidebarOpen, sidebarRef, t, getThemeClasses, setCurrentView, currentView, currentSubject, setIsAvatarModalOpen }} />
+             <Sidebar {...{ user, isSidebarOpen, setIsSidebarOpen, sidebarRef, t, tSubject, getThemeClasses, setCurrentView, currentView, currentSubject, setIsAvatarModalOpen }} />
             <main className="flex-1 flex flex-col overflow-y-auto bg-slate-50">
                <header className="p-4 sticky top-0 bg-white/80 backdrop-blur-lg z-30 border-b border-gray-200">
                     <div className="flex items-center justify-between">
@@ -210,7 +207,7 @@ const MainAppLayout: React.FC<{
             {!isChatOpen && (
                 <button
                     onClick={() => setIsChatOpen(true)}
-                    className={`fixed bottom-6 right-6 z-40 p-4 rounded-full text-white shadow-lg transform transition-all duration-300 hover:scale-110 active:scale-95 animate-bounce-in ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}
+                    className={`ai-chat-button fixed bottom-6 right-6 z-40 p-4 rounded-full text-white shadow-lg transform transition-all duration-300 hover:scale-110 active:scale-95 animate-bounce-in ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')}`}
                     title={t('ai_chat')}
                 >
                     <Bot className="w-6 h-6" />

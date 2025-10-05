@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { db, appId, Timestamp } from '../../../services/firebase';
-import type { AppUser, FlashcardSet } from '../../../types';
+import type { AppUser, FlashcardSet, Flashcard } from '../../../types';
 import { Loader2, Share2 } from 'lucide-react';
 
 interface ShareSetModalProps {
@@ -31,29 +31,37 @@ const ShareSetModal: React.FC<ShareSetModalProps> = ({ isOpen, onClose, set, use
 
         setIsSharing(true);
         try {
-            // 1. Find the recipient user
-            const usersRef = db.collection(`artifacts/${appId}/public/data/users`);
+            // 1. Find the recipient user to ensure they exist
+            const usersRef = db.collection(`users`);
             const userQuery = await usersRef.where('email', '==', email.toLowerCase()).limit(1).get();
 
             if (userQuery.empty) {
                 showAppModal({ text: t('error_user_not_found', { email }) });
+                setIsSharing(false);
                 return;
             }
-            const recipientUser = userQuery.docs[0].data() as AppUser;
 
-            // 2. Create the sharing document in a public collection
-            await db.collection(`artifacts/${appId}/public/data/sharedSets`).add({
-                sharerId: user.uid,
-                sharerName: user.userName,
-                recipientEmail: recipientUser.email,
-                setId: set.id,
-                setName: set.name,
-                subject: set.subject,
-                cardCount: set.cardCount,
-                createdAt: Timestamp.now(),
+            // 2. Read all cards from the sharer's set
+            const cardsRef = db.collection(`users/${user.uid}/flashcardDecks/${set.id}/cards`);
+            const cardsSnapshot = await cardsRef.get();
+            const cardsToShare = cardsSnapshot.docs.map(doc => {
+                // FIX: The document data from Firestore does not contain 'id' or 'setId'.
+                // These are typically added programmatically after fetching.
+                // Simply get the card data as is.
+                const cardData = doc.data();
+                return cardData;
             });
 
-            // The notification will be created client-side by the recipient via the App.tsx listener
+            // 3. Create a new document in the top-level 'sharedSets' collection with a robust name fallback
+            await db.collection('sharedSets').add({
+                name: set.name || 'Onbekende Set',
+                subject: set.subject,
+                sharerId: user.uid,
+                sharerName: user.userName,
+                recipientEmail: email.toLowerCase(),
+                sharedAt: Timestamp.now(),
+                cards: cardsToShare,
+            });
             
             showAppModal({ text: t('share_success', { email }) });
             onClose();

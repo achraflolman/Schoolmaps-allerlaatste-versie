@@ -140,7 +140,7 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
             const profilePictureUrl = selectedAvatar === null ? 'NONE' : selectedAvatar;
             
             // Create user document in Firestore.
-            await db.doc(`artifacts/${appId}/public/data/users/${user.uid}`).set({
+            await db.doc(`users/${user.uid}`).set({
                 uid: user.uid,
                 email,
                 userName: regName,
@@ -341,9 +341,11 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
                 {isRegister ? t('already_account') : t('no_account_register')}
             </button>
             {!isRegister && (
-              <button onClick={handlePasswordReset} className="text-sm font-semibold text-gray-500 hover:underline mt-4 inline-block">
-                {t('forgot_password')}
-              </button>
+              <div className="flex justify-center items-center mt-4">
+                <button onClick={handlePasswordReset} className="text-sm font-semibold text-gray-500 hover:underline">
+                    {t('forgot_password')}
+                </button>
+              </div>
             )}
           </div>
         </div>

@@ -34,20 +34,20 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
         setIsLoading(true);
         try {
             if (tab === 'users') {
-                const usersCollection = db.collection(`artifacts/${appId}/public/data/users`);
+                const usersCollection = db.collection(`users`);
                 const q = usersCollection.orderBy('createdAt', 'desc');
                 const querySnapshot = await q.get();
                 const usersList = querySnapshot.docs.map(doc => ({ ...doc.data(), uid: doc.id } as AppUser));
                 setUsers(usersList);
             }
             if (tab === 'broadcasts') {
-                const broadcastsCollection = db.collection(`artifacts/${appId}/public/data/broadcasts`);
+                const broadcastsCollection = db.collection(`broadcasts`);
                 const q = broadcastsCollection.orderBy('createdAt', 'desc');
                 const querySnapshot = await q.get();
                 setBroadcasts(querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as BroadcastData)));
             }
             if (tab === 'feedback') {
-                const feedbacksCollection = db.collection(`artifacts/${appId}/public/data/feedback`);
+                const feedbacksCollection = db.collection(`feedback`);
                 const q = feedbacksCollection.orderBy('createdAt', 'desc');
                 const querySnapshot = await q.get();
                 setFeedbacks(querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Feedback)));
@@ -83,7 +83,7 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
         }
         setIsSending(true);
         try {
-            await db.collection(`artifacts/${appId}/public/data/broadcasts`).add({
+            await db.collection(`broadcasts`).add({
                 title: broadcastTitle,
                 message: broadcastMessage,
                 sender: user.userName,
@@ -110,7 +110,7 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
             text: confirmText,
             confirmAction: async () => {
                 try {
-                    const userDocRef = db.doc(`artifacts/${appId}/public/data/users/${targetUser.uid}`);
+                    const userDocRef = db.doc(`users/${targetUser.uid}`);
                     await userDocRef.update({ disabled: isDisabling });
                     showAppModal({ text: t('user_status_updated') });
                     fetchAllData('users');
@@ -125,7 +125,7 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
             text: t('confirm_verify_user', { name: targetUser.userName }),
             confirmAction: async () => {
                 try {
-                    const userDocRef = db.doc(`artifacts/${appId}/public/data/users/${targetUser.uid}`);
+                    const userDocRef = db.doc(`users/${targetUser.uid}`);
                     await userDocRef.update({ isVerifiedByEmail: true });
                     showAppModal({ text: t('user_verified_success') });
                     fetchAllData('users'); // Refresh the user list
@@ -147,7 +147,7 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
                     const notifRefsToDelete = [];
                     for (const u of users) {
                         if (u.isAdmin) continue;
-                        const notifsRef = db.collection(`artifacts/${appId}/users/${u.uid}/notifications`);
+                        const notifsRef = db.collection(`users/${u.uid}/notifications`);
                         const q = notifsRef.where('type', '==', 'admin');
                         const notifSnapshot = await q.get();
                         notifSnapshot.forEach(doc => notifRefsToDelete.push(doc.ref));
@@ -162,7 +162,7 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
                     }
     
                     // Step 3: Collect and delete broadcast documents in batches
-                    const broadcastRefs = broadcasts.map(b => db.doc(`artifacts/${appId}/public/data/broadcasts/${b.id}`));
+                    const broadcastRefs = broadcasts.map(b => db.doc(`broadcasts/${b.id}`));
                     for (let i = 0; i < broadcastRefs.length; i += 500) {
                         const batch = db.batch();
                         const chunk = broadcastRefs.slice(i, i + 500);
@@ -187,7 +187,7 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
         if (!selectedFeedback || !replyText.trim()) return;
         setIsSending(true);
         try {
-            const feedbackRef = db.doc(`artifacts/${appId}/public/data/feedback/${selectedFeedback.id}`);
+            const feedbackRef = db.doc(`feedback/${selectedFeedback.id}`);
             await feedbackRef.set({
                 status: 'replied',
                 replies: arrayUnion({
@@ -220,7 +220,7 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
             <header className="bg-white shadow-md p-4 flex justify-between items-center">
                 <h1 className={`text-2xl font-bold ${getThemeClasses('text-logo')}`}>{t('admin_dashboard')}</h1>
                 <div className="flex items-center gap-4">
-                    <span className="font-semibold">{t('welcome_message', { name: user.userName })}</span>
+                    <span className="font-semibold">{t('welcome_message', { name: user.userName || 'Admin' })} 👋</span>
                     <button onClick={handleLogout} title={t('logout_button')} className="p-2 rounded-lg text-red-500 bg-red-100 hover:bg-red-200 transition-colors duration-200 active:scale-90">
                         <LogOut className="w-6 h-6" />
                     </button>

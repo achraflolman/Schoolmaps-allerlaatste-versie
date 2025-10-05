@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import type { AppUser } from '../../types';
-import AvatarSelectionGrid from '../ui/AvatarSelectionGrid';
 import { Rocket } from 'lucide-react';
 
 interface AISetupViewProps {
@@ -13,14 +12,13 @@ interface AISetupViewProps {
 
 const AISetupView: React.FC<AISetupViewProps> = ({ user, onFinish, onProfileUpdate, t, getThemeClasses }) => {
   const [botName, setBotName] = useState(user.aiBotName || 'AI Assistent');
-  const [botAvatar, setBotAvatar] = useState<string | null>(user.aiBotAvatarUrl || null);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleFinish = async () => {
     setIsSaving(true);
     await onProfileUpdate({
       aiBotName: botName.trim() || 'AI Assistent',
-      aiBotAvatarUrl: botAvatar,
+      aiBotAvatarUrl: null, // Always set to null
       hasCompletedOnboarding: true,
     });
     // No need to set isSaving to false, as the component will unmount
@@ -47,16 +45,6 @@ const AISetupView: React.FC<AISetupViewProps> = ({ user, onFinish, onProfileUpda
               onChange={(e) => setBotName(e.target.value)}
               placeholder={'e.g., Study Bot'}
               className={`shadow-sm appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 ${getThemeClasses('ring')}`}
-            />
-          </div>
-          <div>
-            <label className="block text-gray-800 text-sm font-bold mb-2">{t('select_bot_avatar')}</label>
-            <AvatarSelectionGrid
-              selectedAvatar={botAvatar}
-              setSelectedAvatar={setBotAvatar}
-              userName={botName || 'AI'}
-              t={t}
-              getThemeClasses={getThemeClasses}
             />
           </div>
         </div>

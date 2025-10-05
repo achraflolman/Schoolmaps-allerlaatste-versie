@@ -1,5 +1,3 @@
-
-
 import React from 'react';
 import { Book, CalendarDays, Settings, X, BrainCircuit, BarChart3, Bell, Flame, LifeBuoy, Edit, ClipboardList, Bot, Files, Star } from 'lucide-react';
 import type { AppUser } from '../../types';
@@ -10,6 +8,7 @@ interface SidebarProps {
   setIsSidebarOpen: (isOpen: boolean) => void;
   sidebarRef: React.RefObject<HTMLDivElement>;
   t: (key: string, replacements?: any) => string;
+  tSubject: (key: string) => string;
   getThemeClasses: (variant: string) => string;
   setCurrentView: (view: string) => void;
   currentView: string;
@@ -17,7 +16,7 @@ interface SidebarProps {
   setIsAvatarModalOpen: (isOpen: boolean) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen, sidebarRef, t, getThemeClasses, setCurrentView, currentView, currentSubject, setIsAvatarModalOpen }) => {
+const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen, sidebarRef, t, tSubject, getThemeClasses, setCurrentView, currentView, currentSubject, setIsAvatarModalOpen }) => {
   const navItems = [
     { id: 'files', label: t('my_files'), icon: <Files className="w-5 h-5 mr-3" />, view: 'files' },
     { id: 'calendar', label: t('calendar'), icon: <CalendarDays className="w-5 h-5 mr-3" />, view: 'calendar' },
@@ -47,13 +46,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen
         <style>{`
             .sidebar-scroll::-webkit-scrollbar { display: none; }
             .sidebar-scroll { -ms-overflow-style: none; scrollbar-width: none; }
-            @keyframes gentle-pulse {
-                0%, 100% { transform: scale(1); opacity: 0.8; }
-                50% { transform: scale(1.1); opacity: 1; }
-            }
-            .animate-gentle-pulse {
-                animation: gentle-pulse 2.5s infinite ease-in-out;
-            }
         `}</style>
         <button
           type="button"
@@ -77,22 +69,22 @@ const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen
                 <Edit className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </div>
             </button>
-            <p className={`mt-4 text-xl font-bold ${getThemeClasses('text-strong')}`}>{t('welcome_message', { name: userFirstName })}</p>
+            <p className={`mt-4 text-xl font-bold ${getThemeClasses('text-strong')}`}>{t('welcome_message', { name: userFirstName })} 👋</p>
             <div className="flex items-center gap-2 mt-1">
                 {user.streakCount && user.streakCount > 0 && (
-                    <div className="flex items-center gap-1.5 bg-orange-100 text-orange-600 font-bold text-sm py-1 px-3 rounded-full animate-gentle-pulse">
+                    <div className="flex items-center gap-1.5 bg-orange-100 text-orange-600 font-bold text-sm py-1 px-3 rounded-full">
                         <Flame className="w-4 h-4" />
                         <span>{user.streakCount}</span>
                     </div>
                 )}
                 {(user.totalStars ?? 0) > 0 && (
-                    <div className="flex items-center gap-1.5 bg-yellow-100 text-yellow-700 font-bold text-sm py-1 px-3 rounded-full animate-gentle-pulse" style={{ animationDelay: '0.5s' }}>
+                    <div className="flex items-center gap-1.5 bg-yellow-100 text-yellow-700 font-bold text-sm py-1 px-3 rounded-full">
                         <Star className="w-4 h-4 fill-current" />
                         <span>{user.totalStars}</span>
                     </div>
                 )}
             </div>
-            <p className="text-sm text-gray-600 mt-1">{user.className} {user.educationLevel?.toUpperCase()}</p>
+            <p className="text-sm text-gray-600 mt-1">{user.className} {user.educationLevel ? tSubject(user.educationLevel) : ''}</p>
             <p className="text-xs text-gray-500 break-all w-full px-2">{user.email}</p>
           </div>
         )}

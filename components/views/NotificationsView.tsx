@@ -43,7 +43,7 @@ const NotificationsView: React.FC<NotificationsViewProps> = ({ user, notificatio
         if (unreadIds.length > 0) {
             const batch = db.batch();
             unreadIds.forEach(id => {
-                const notifRef = db.doc(`artifacts/${appId}/users/${user.uid}/notifications/${id}`);
+                const notifRef = db.doc(`users/${user.uid}/notifications/${id}`);
                 batch.update(notifRef, { read: true });
             });
             batch.commit().catch(err => console.error("Failed to mark notifications as read:", err));
@@ -70,7 +70,7 @@ const NotificationsView: React.FC<NotificationsViewProps> = ({ user, notificatio
             text: t('confirm_clear_all_notifications'),
             confirmAction: async () => {
                 setIsClearing(true);
-                const notifsRef = db.collection(`artifacts/${appId}/users/${user.uid}/notifications`);
+                const notifsRef = db.collection(`users/${user.uid}/notifications`);
                 const snapshot = await notifsRef.get();
                 
                 const broadcastIdsToDismiss: string[] = [];
@@ -114,7 +114,7 @@ const NotificationsView: React.FC<NotificationsViewProps> = ({ user, notificatio
         try {
             const batch = db.batch();
             unreadIds.forEach(id => {
-                const notifRef = db.doc(`artifacts/${appId}/users/${user.uid}/notifications/${id}`);
+                const notifRef = db.doc(`users/${user.uid}/notifications/${id}`);
                 batch.update(notifRef, { read: true });
             });
             await batch.commit();

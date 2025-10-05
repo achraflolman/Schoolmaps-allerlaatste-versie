@@ -264,7 +264,7 @@ const HomeView: React.FC<HomeViewProps> = (props) => {
     return (
         <div className="space-y-6 animate-fade-in">
             <div>
-                <h1 className={`text-3xl font-bold ${getThemeClasses('text-strong')}`}>{t('welcome_message', { name: userFirstName })}</h1>
+                <h1 className={`text-3xl font-bold ${getThemeClasses('text-strong')}`}>{t('welcome_message', { name: userFirstName })} 👋</h1>
                 <p className="text-gray-500">{today.toLocaleDateString(language, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
             </div>
 

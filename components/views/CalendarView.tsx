@@ -159,7 +159,7 @@ ${inputText}
                     createdAt: Timestamp.now()
                 };
                 
-                const newEventRef = db.collection(`artifacts/${appId}/users/${userId}/calendarEvents`).doc();
+                const newEventRef = db.collection(`users/${userId}/calendarEvents`).doc();
                 batch.set(newEventRef, eventData);
                 eventsAddedCount++;
             }
@@ -757,10 +757,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({ allEvents, t, getThemeClass
     
     try {
         if (editingEvent) {
-            await db.doc(`artifacts/${appId}/users/${userId}/calendarEvents/${editingEvent.id}`).update({ ...eventData, updatedAt: Timestamp.now() });
+            await db.doc(`users/${userId}/calendarEvents/${editingEvent.id}`).update({ ...eventData, updatedAt: Timestamp.now() });
             showAppModal({ text: t('success_event_updated') });
         } else {
-            await db.collection(`artifacts/${appId}/users/${userId}/calendarEvents`).add({ ...eventData, createdAt: Timestamp.now() });
+            await db.collection(`users/${userId}/calendarEvents`).add({ ...eventData, createdAt: Timestamp.now() });
             showAppModal({ text: t('success_event_added') });
         }
         setIsModalOpen(false);
@@ -778,7 +778,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ allEvents, t, getThemeClass
         text: t('delete_event_confirm', { title: event.title }),
         confirmAction: async () => {
             try {
-                await db.doc(`artifacts/${appId}/users/${userId}/calendarEvents/${event.id}`).delete();
+                await db.doc(`users/${userId}/calendarEvents/${event.id}`).delete();
                 setViewingEvent(null);
             } catch (error) {
                 console.error("Failed to delete event:", error);

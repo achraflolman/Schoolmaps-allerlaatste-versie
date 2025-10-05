@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import type { AppUser, CalendarEvent, FileData, Note, FlashcardSet } from '../../types';
-import { BarChart3, Clock, Layers, CalendarCheck } from 'lucide-react';
+import { BarChart3, Clock, Layers, CalendarCheck, ArrowLeft } from 'lucide-react';
 
 interface ProgressViewProps {
   user: AppUser;
@@ -11,6 +11,7 @@ interface ProgressViewProps {
   allUserFiles: FileData[];
   allUserNotes: Note[];
   allUserFlashcardSets: FlashcardSet[];
+  onBack?: () => void;
 }
 
 const COLORS = [
@@ -68,7 +69,7 @@ const ChartSection: React.FC<{
     );
 };
 
-const ProgressView: React.FC<ProgressViewProps> = ({ user, t, getThemeClasses, tSubject, userEvents, allUserFiles, allUserNotes, allUserFlashcardSets }) => {
+const ProgressView: React.FC<ProgressViewProps> = ({ user, t, getThemeClasses, tSubject, userEvents, allUserFiles, allUserNotes, allUserFlashcardSets, onBack }) => {
   
     const timeData = useMemo(() => {
         const dataMap = new Map<string, number>();
@@ -116,9 +117,13 @@ const ProgressView: React.FC<ProgressViewProps> = ({ user, t, getThemeClasses, t
                     to { opacity: 1; transform: translateY(0); }
                 }
             `}</style>
-            <h2 className={`text-3xl font-bold text-center flex items-center justify-center gap-2 ${getThemeClasses('text-strong')}`}>
-                <BarChart3 /> {t('progress')}
-            </h2>
+            <div className="flex items-center">
+                {onBack && <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-200 transition-colors"><ArrowLeft/></button>}
+                <h2 className={`text-3xl font-bold text-center flex-grow flex items-center justify-center gap-2 ${getThemeClasses('text-strong')}`}>
+                    <BarChart3 /> {t('progress')}
+                </h2>
+                <div className="w-9 h-9"></div> {/* Placeholder */}
+            </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="lg:col-span-2">
