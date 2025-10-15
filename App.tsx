@@ -537,6 +537,7 @@ const App: React.FC = () => {
         }
         isSyncingCalendar.current = true;
         let hasFailedInRun = false;
+        const errors: { name: string, message: string }[] = [];
         
         try {
             const calendarsToSync = localUser.syncedCalendars?.filter(c => c.enabled);
@@ -552,13 +553,16 @@ const App: React.FC = () => {
                     const targetUrl = cal.url.replace(/^webcal:\/\//i, 'https://');
                     const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
                     const response = await fetch(proxyUrl);
-                    if (!response.ok) throw new Error(`Failed to fetch calendar: ${response.statusText}`);
+                    if (!response.ok) throw new Error(response.statusText);
                     const icsData = await response.text();
                     const parsed = parseIcs(icsData, cal, localUser);
                     allParsedEvents = [...allParsedEvents, ...parsed];
                 } catch (error) {
-                    console.error(`Error syncing calendar "${cal.name}":`, error);
+                    const calendarName = (typeof cal.name === 'string' && cal.name) ? cal.name : 'Unknown Calendar';
+                    const errorMessage = (error instanceof Error) ? error.message : String(error);
+                    console.error(`Error syncing calendar "${calendarName}":`, error);
                     hasFailedInRun = true;
+                    errors.push({ name: calendarName, message: errorMessage === 'Failed to fetch' ? 'Failed to fetch. Check iCal URL and network connection.' : errorMessage });
                 }
             }
             setSyncedEvents(allParsedEvents);
@@ -566,6 +570,12 @@ const App: React.FC = () => {
             isSyncingCalendar.current = false;
             if (hasFailedInRun) {
                 syncFailureCount.current++;
+
+                if (syncFailureCount.current === 1 && errors.length > 0) {
+                    const errorText = errors.map(e => t('error_sync_calendar_description', { name: e.name, error: e.message })).join('\n\n');
+                    showAppModal({ text: errorText });
+                }
+    
                 if (syncFailureCount.current >= 3) {
                     console.warn('Calendar sync failed repeatedly. Starting 1-minute cooldown.');
                     isSyncOnCooldown.current = true;
@@ -579,7 +589,7 @@ const App: React.FC = () => {
                 syncFailureCount.current = 0; // Reset counter on success
             }
         }
-    }, [parseIcs]);
+    }, [parseIcs, showAppModal, t]);
 
     // Keep refs updated to be used in stable-dependency useEffects
     useEffect(() => {

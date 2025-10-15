@@ -1,5 +1,5 @@
 import React from 'react';
-import { Book, CalendarDays, Settings, X, BrainCircuit, BarChart3, Bell, Flame, LifeBuoy, Edit, ClipboardList, Bot, Files, Star } from 'lucide-react';
+import { Book, CalendarDays, Settings, X, BrainCircuit, BarChart3, Bell, Flame, LifeBuoy, Edit, ClipboardList, Bot, Files, Star, Search, LayoutDashboard, BookOpen, Sparkles, Store } from 'lucide-react';
 import type { AppUser } from '../../types';
 
 interface SidebarProps {
@@ -18,8 +18,9 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen, sidebarRef, t, tSubject, getThemeClasses, setCurrentView, currentView, currentSubject, setIsAvatarModalOpen }) => {
   const navItems = [
-    { id: 'files', label: t('my_files'), icon: <Files className="w-5 h-5 mr-3" />, view: 'files' },
+    { id: 'files', label: t('my_subjects'), icon: <BookOpen className="w-5 h-5 mr-3" />, view: 'files' },
     { id: 'calendar', label: t('calendar'), icon: <CalendarDays className="w-5 h-5 mr-3" />, view: 'calendar' },
+    { id: 'marketplace', label: t('marketplace_title'), icon: <Store className="w-5 h-5 mr-3" />, view: 'marketplace' },
     { id: 'planner', label: t('study_planner'), icon: <ClipboardList className="w-5 h-5 mr-3" />, view: 'planner' },
     { id: 'tools', label: t('extra_tools'), icon: <BrainCircuit className="w-5 h-5 mr-3" />, view: 'tools' },
     { id: 'settings', label: t('settings'), icon: <Settings className="w-5 h-5 mr-3" />, view: 'settings' },
@@ -77,12 +78,10 @@ const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen
                         <span>{user.streakCount}</span>
                     </div>
                 )}
-                {(user.totalStars ?? 0) > 0 && (
-                    <div className="flex items-center gap-1.5 bg-yellow-100 text-yellow-700 font-bold text-sm py-1 px-3 rounded-full">
-                        <Star className="w-4 h-4 fill-current" />
-                        <span>{user.totalStars}</span>
-                    </div>
-                )}
+                <div className="flex items-center gap-1.5 bg-yellow-100 text-yellow-700 font-bold text-sm py-1 px-3 rounded-full">
+                    <Star className="w-4 h-4 fill-current" />
+                    <span>{user.totalStars ?? 0}</span>
+                </div>
             </div>
             <p className="text-sm text-gray-600 mt-1">{user.className} {user.educationLevel ? tSubject(user.educationLevel) : ''}</p>
             <p className="text-xs text-gray-500 break-all w-full px-2">{user.email}</p>
@@ -97,8 +96,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen
               className={`w-full text-left py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center text-gray-700
                 ${isHomeActive ? `${getThemeClasses('bg')} text-white shadow-md` : `hover:${getThemeClasses('bg-light')}`}`}
             >
-              <Book className="w-5 h-5 mr-3" />
-              {t('my_subjects')}
+              <LayoutDashboard className="w-5 h-5 mr-3" />
+              {t('home_dashboard')}
             </button>
           {navItems.map(item => (
             <button

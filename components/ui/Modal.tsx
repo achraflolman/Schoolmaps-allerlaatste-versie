@@ -25,12 +25,12 @@ const CustomModal: React.FC<CustomModalProps> = ({ text, onClose, confirmAction,
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full transform transition-all duration-300 scale-100 animate-scale-up">
-        <p className="text-lg font-medium text-gray-800 mb-6 text-center">{text}</p>
+        <p className="text-lg font-medium text-gray-800 mb-6 text-center whitespace-pre-wrap">{text}</p>
         {isConfirmModal ? (
           <div className="flex justify-around space-x-4">
             <button
               onClick={handleConfirm}
-              className="flex-1 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-200 shadow-lg"
+              className={`flex-1 ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} active:scale-95 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 ${getThemeClasses('ring')} transition-colors duration-200 shadow-lg`}
             >
               {t('confirm_button')}
             </button>

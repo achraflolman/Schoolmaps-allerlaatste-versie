@@ -22,6 +22,7 @@ import StudyPlannerView from './StudyPlannerView';
 import AIChatView from './AIChatView';
 import AISetupView from './AISetupView';
 import SubjectSelectionView from './SubjectSelectionView';
+import MarketplaceView from './MarketplaceView';
 import { Chat } from '@google/genai';
 
 const MainAppLayout: React.FC<{
@@ -149,11 +150,12 @@ const MainAppLayout: React.FC<{
     const mainContent = (
         <div>
             {currentView === 'home' && !currentSubject && <HomeView {...{ user, t, getThemeClasses, allEvents, language, allUserTasks, allStudySessions, recentFiles, setCurrentView, currentTime, onActivityClick: handleActivityClick, allUserNotes, allUserFlashcardSets, userStudyPlans }} />}
-            {currentView === 'home' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
+            {currentView === 'home' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard, onProfileUpdate }} />}
             
             {currentView === 'files' && !currentSubject && <SubjectSelectionView {...{ user, t, tSubject, getThemeClasses, setCurrentSubject }} />}
-            {currentView === 'files' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard }} />}
-
+            {currentView === 'files' && currentSubject && <SubjectView {...{ user, currentSubject, subjectFiles, setCurrentSubject, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, searchQuery, setSearchQuery, copyTextToClipboard, onProfileUpdate }} />}
+            
+            {currentView === 'marketplace' && <MarketplaceView {...{ user, t, tSubject, getThemeClasses, showAppModal, userId: user.uid, onProfileUpdate }} />}
             {currentView === 'calendar' && <CalendarView {...{ allEvents, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user, onProfileUpdate, currentTime }} />}
             {currentView === 'planner' && <StudyPlannerView {...{ userStudyPlans, t, getThemeClasses, tSubject, language, showAppModal, userId: user.uid, user, allEvents }} />}
             {currentView === 'tools' && <ToolsView {...toolsViewProps} />}

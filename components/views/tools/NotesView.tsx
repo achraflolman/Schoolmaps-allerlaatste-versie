@@ -187,33 +187,10 @@ const TextNoteEditor: React.FC<TextNoteEditorProps> = ({ note, onBack, t, getThe
     const contentRef = useRef(note.content || '');
     const [isAIGenerateModalOpen, setIsAIGenerateModalOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [typingContent, setTypingContent] = useState('');
-    const [isTyping, setIsTyping] = useState(false);
 
     useEffect(() => {
         contentRef.current = content;
     }, [content]);
-
-    useEffect(() => {
-        if (isTyping && typingContent) {
-            let i = 0;
-            const intervalId = setInterval(() => {
-                if (i < typingContent.length) {
-                    const editor = document.getElementById('note-editor-content');
-                    if (editor) {
-                        editor.innerHTML += typingContent.charAt(i);
-                        setContent(editor.innerHTML);
-                    }
-                    i++;
-                } else {
-                    clearInterval(intervalId);
-                    setIsTyping(false);
-                    setTypingContent('');
-                }
-            }, 15);
-            return () => clearInterval(intervalId);
-        }
-    }, [isTyping, typingContent]);
 
     const handleContentChange = (e: React.FormEvent<HTMLDivElement>) => {
         const newContent = e.currentTarget.innerHTML;
@@ -245,15 +222,25 @@ const TextNoteEditor: React.FC<TextNoteEditorProps> = ({ note, onBack, t, getThe
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const languageName = user.languagePreference === 'nl' ? 'Nederlands' : 'English';
-            const fullPrompt = `Je bent een studie-assistent. Geef een duidelijk, goed gestructureerd en grammaticaal correct antwoord op de vraag van de gebruiker. Gebruik basis HTML voor opmaak: <b> voor vet, <i> voor cursief, <u> voor onderstreept, <ul> en <li> voor lijsten. Gebruik GEEN Markdown. De taal van het antwoord MOET ${languageName} zijn. Vraag: "${prompt}"`;
+            const fullPrompt = `Je bent een studie-assistent. Geef een duidelijk, goed gestructureerd en grammaticaal correct antwoord. Schrijf in eenvoudige, duidelijke taal die voor een middelbare scholier makkelijk te begrijpen is. Begin direct met de uitleg; gebruik GEEN aanhef zoals 'Beste student'. Gebruik basis HTML voor opmaak: <b> voor vet, <i> voor cursief, <u> voor onderstreept, <ul> en <li> voor lijsten. Gebruik GEEN Markdown. De taal van het antwoord MOET ${languageName} zijn. Vraag: "${prompt}"`;
             
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: fullPrompt });
             let generatedText = response.text.replace(/[*#`]/g, '');
 
-            const currentContent = contentRef.current;
-            setContent(prev => prev ? prev + '<br><br>' : ''); // Add spacing
-            setTypingContent(generatedText);
-            setIsTyping(true);
+            const editor = document.getElementById('note-editor-content');
+            if (editor) {
+                const newContent = editor.innerHTML + (editor.innerHTML.trim() ? '<br><br>' : '') + generatedText;
+                editor.innerHTML = newContent;
+                setContent(newContent);
+                
+                if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                saveTimeoutRef.current = setTimeout(() => {
+                    db.doc(`users/${note.ownerId}/notes/${note.id}`).update({
+                        content: newContent,
+                        updatedAt: Timestamp.now()
+                    });
+                }, 1500);
+            }
 
         } catch (error) {
             console.error(error);
@@ -268,9 +255,9 @@ const TextNoteEditor: React.FC<TextNoteEditorProps> = ({ note, onBack, t, getThe
              <AIGenerateNoteModal isOpen={isAIGenerateModalOpen} onClose={() => setIsAIGenerateModalOpen(false)} onGenerate={handleAIGenerateText} isGenerating={isGenerating} getThemeClasses={getThemeClasses} />
              <div className="mb-4 flex justify-between items-center">
                 <button onClick={onBack} className="flex items-center gap-1 font-semibold bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg"><ArrowLeft size={16}/> {t('back_button')}</button>
-                <button onClick={() => setIsAIGenerateModalOpen(true)} disabled={isGenerating || isTyping} className="flex items-center gap-2 font-semibold bg-purple-100 text-purple-700 hover:bg-purple-200 px-4 py-2 rounded-lg disabled:opacity-50">
-                    {isGenerating || isTyping ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16}/>}
-                    {isGenerating || isTyping ? 'Genereren...' : 'Genereer met AI'}
+                <button onClick={() => setIsAIGenerateModalOpen(true)} disabled={isGenerating} className="flex items-center gap-2 font-semibold bg-purple-100 text-purple-700 hover:bg-purple-200 px-4 py-2 rounded-lg disabled:opacity-50">
+                    {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16}/>}
+                    {isGenerating ? 'Genereren...' : 'Genereer met AI'}
                 </button>
              </div>
             <div className={`p-6 sm:p-10 rounded-lg shadow-lg ${getThemeClasses('bg-light')}`}>
@@ -279,7 +266,7 @@ const TextNoteEditor: React.FC<TextNoteEditorProps> = ({ note, onBack, t, getThe
                     <FormattingToolbar />
                     <div
                         id="note-editor-content"
-                        contentEditable={!isGenerating && !isTyping}
+                        contentEditable={!isGenerating}
                         onInput={handleContentChange}
                         dangerouslySetInnerHTML={{ __html: content }}
                         style={{ textAlign: 'left', direction: 'ltr' }}
@@ -294,6 +281,40 @@ const TextNoteEditor: React.FC<TextNoteEditorProps> = ({ note, onBack, t, getThe
 // ==================================
 //      DRAWING NOTE EDITOR
 // ==================================
+const getObjectBounds = (obj: NoteObject): { x: number, y: number, width: number, height: number } => {
+    switch (obj.type) {
+        case 'rect':
+            return { x: obj.x, y: obj.y, width: obj.width, height: obj.height };
+        case 'line':
+            return {
+                x: Math.min(obj.x, obj.x2),
+                y: Math.min(obj.y, obj.y2),
+                width: Math.abs(obj.x - obj.x2),
+                height: Math.abs(obj.y - obj.y2)
+            };
+        case 'path':
+            if (obj.points.length === 0) return { x: obj.x, y: obj.y, width: 0, height: 0 };
+            const minX = Math.min(...obj.points.map(p => p.x));
+            const maxX = Math.max(...obj.points.map(p => p.x));
+            const minY = Math.min(...obj.points.map(p => p.y));
+            const maxY = Math.max(...obj.points.map(p => p.y));
+            return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        case 'text':
+             return { x: obj.x, y: obj.y - obj.height, width: obj.width, height: obj.height }; // Y is baseline, so adjust
+    }
+};
+
+const isPointInRect = (point: { x: number, y: number }, rect: { x: number, y: number, width: number, height: number }) => {
+    return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
+};
+
+const isIntersecting = (rect1: { x: number, y: number, width: number, height: number }, rect2: { x: number, y: number, width: number, height: number }) => {
+    return rect1.x < rect2.x + rect2.width &&
+           rect1.x + rect1.width > rect2.x &&
+           rect1.y < rect2.y + rect2.height &&
+           rect1.y + rect1.height > rect2.y;
+};
+
 const NoteEditor: React.FC<{
     note: Note;
     onClose: () => void;
@@ -355,30 +376,77 @@ const NoteEditor: React.FC<{
         onClose();
     };
 
-    const addToHistory = (newObjectsState: NoteObject[]) => {
+    const addToHistory = useCallback((newObjectsState: NoteObject[]) => {
         const newHistory = history.slice(0, historyIndex + 1);
         const newStateString = JSON.stringify(newObjectsState);
-        if (newStateString === newHistory[newHistory.length - 1]) return;
+        if (newHistory.length > 0 && newStateString === newHistory[newHistory.length - 1]) return;
         newHistory.push(newStateString);
         setHistory(newHistory);
         setHistoryIndex(newHistory.length - 1);
-    };
+    }, [history, historyIndex]);
 
-    const undo = () => {
+    const undo = useCallback(() => {
         if (historyIndex > 0) {
             const newIndex = historyIndex - 1;
             setHistoryIndex(newIndex);
             setObjects(JSON.parse(history[newIndex]));
         }
-    };
+    }, [history, historyIndex]);
     
-    const redo = () => {
+    const redo = useCallback(() => {
         if (historyIndex < history.length - 1) {
             const newIndex = historyIndex + 1;
             setHistoryIndex(newIndex);
             setObjects(JSON.parse(history[newIndex]));
         }
-    };
+    }, [history, historyIndex]);
+    
+    const handleCopy = useCallback(() => {
+        const selectedObjects = objects.filter(obj => selectedObjectIds.has(obj.id));
+        setClipboard(selectedObjects);
+    }, [objects, selectedObjectIds]);
+
+    const handleCut = useCallback(() => {
+        handleCopy();
+        const newObjects = objects.filter(obj => !selectedObjectIds.has(obj.id));
+        setObjects(newObjects);
+        addToHistory(newObjects);
+        setSelectedObjectIds(new Set());
+    }, [handleCopy, objects, selectedObjectIds, addToHistory]);
+
+    const handlePaste = useCallback(() => {
+        if (clipboard.length === 0) return;
+        const newObjects = clipboard.map(obj => ({
+            ...obj,
+            id: `obj_${Date.now()}_${Math.random()}`,
+            x: obj.x + 20, // Offset pasted objects
+            y: obj.y + 20
+        }));
+        const updatedObjects = [...objects, ...newObjects];
+        setObjects(updatedObjects);
+        addToHistory(updatedObjects);
+    }, [clipboard, objects, addToHistory]);
+
+    const handleDeleteSelected = useCallback(() => {
+        if (selectedObjectIds.size === 0) return;
+        const newObjects = objects.filter(obj => !selectedObjectIds.has(obj.id));
+        setObjects(newObjects);
+        addToHistory(newObjects);
+        setSelectedObjectIds(new Set());
+    }, [objects, selectedObjectIds, addToHistory]);
+    
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') { e.preventDefault(); handleCopy(); }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') { e.preventDefault(); handleCut(); }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') { e.preventDefault(); handlePaste(); }
+            if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); handleDeleteSelected(); }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+            if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [handleCopy, handleCut, handlePaste, handleDeleteSelected, undo, redo]);
 
     useEffect(() => {
         try {
@@ -443,11 +511,41 @@ const NoteEditor: React.FC<{
         }
         ctx.stroke();
     };
-    const getObjectBounds = (obj: NoteObject): { x: number, y: number, width: number, height: number } => { /* ... implementation unchanged ... */ return {x:0,y:0,width:0,height:0}; };
-    const isIntersecting = (rect1: any, rect2: any) => { /* ... implementation unchanged ... */ return false; };
-    const isPointInRect = (point: any, rect: any) => { /* ... implementation unchanged ... */ return false; };
     
-    const drawObject = (ctx: CanvasRenderingContext2D, obj: NoteObject) => { /* ... implementation unchanged ... */ };
+    const drawObject = (ctx: CanvasRenderingContext2D, obj: NoteObject) => {
+        ctx.strokeStyle = obj.color;
+        ctx.fillStyle = obj.color;
+        ctx.lineWidth = obj.strokeWidth;
+        ctx.globalAlpha = (obj as PathObject).isHighlighter ? 0.3 : 1.0;
+    
+        switch (obj.type) {
+            case 'path':
+                ctx.beginPath();
+                obj.points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+                ctx.stroke();
+                break;
+            case 'rect':
+                ctx.strokeRect(obj.x, obj.y, obj.width, obj.height);
+                break;
+            case 'line':
+                ctx.beginPath();
+                ctx.moveTo(obj.x, obj.y);
+                ctx.lineTo(obj.x2, obj.y2);
+                ctx.stroke();
+                break;
+            case 'text':
+                ctx.font = `${obj.fontSize}px ${obj.fontFamily}`;
+                ctx.fillText(obj.text, obj.x, obj.y);
+                break;
+        }
+        ctx.globalAlpha = 1.0;
+        if (selectedObjectIds.has(obj.id)) {
+            const bounds = getObjectBounds(obj);
+            ctx.strokeStyle = '#007AFF';
+            ctx.lineWidth = 1 / scale;
+            ctx.strokeRect(bounds.x - 5, bounds.y - 5, bounds.width + 10, bounds.height + 10);
+        }
+    };
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -475,13 +573,46 @@ const NoteEditor: React.FC<{
         
         ctx.restore();
         
-        if (selectionRect) { /* ... implementation unchanged ... */ }
+        if (selectionRect) {
+            ctx.strokeStyle = 'rgba(0, 122, 255, 0.8)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 2]);
+            ctx.strokeRect(selectionRect.x, selectionRect.y, selectionRect.width, selectionRect.height);
+            ctx.setLineDash([]);
+        }
     }, [objects, selectedObjectIds, selectionRect, note.background, scale, offset, pageColor]);
     
     const handleMouseDown = (e: React.MouseEvent) => { /* ... implementation for mouse drawing ... */ };
     const handleMouseMove = (e: React.MouseEvent) => { /* ... implementation for mouse drawing ... */ };
     const handleMouseUp = (e: React.MouseEvent) => { /* ... implementation for mouse drawing ... */ };
-    const handleDoubleClick = (e: React.MouseEvent) => { /* ... implementation for text editing ... */ };
+    
+    const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+        if (activeTool !== 'select') return;
+        const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
+        const clickedObject = objects.slice().reverse().find(obj => obj.type === 'text' && isPointInRect({ x, y }, getObjectBounds(obj)));
+        
+        if (clickedObject && clickedObject.type === 'text') {
+            const newText = prompt('Enter new text:', (clickedObject as TextObject).text);
+            if (newText !== null) {
+                const updatedObjects = objects.map(obj => {
+                    if (obj.id === clickedObject.id) {
+                        const canvas = canvasRef.current;
+                        const ctx = canvas?.getContext('2d');
+                        let newWidth = (obj as TextObject).width;
+                        if (ctx) {
+                            ctx.font = `${(obj as TextObject).fontSize}px ${(obj as TextObject).fontFamily}`;
+                            newWidth = ctx.measureText(newText).width;
+                        }
+                        return { ...obj, text: newText, width: newWidth };
+                    }
+                    return obj;
+                });
+                setObjects(updatedObjects);
+                addToHistory(updatedObjects);
+            }
+        }
+    }, [activeTool, objects, scale, offset, addToHistory]);
+    
     const handleTouchStart = (e: React.TouchEvent) => { /* ... implementation for touch events ... */ };
     const handleTouchMove = (e: React.TouchEvent) => { /* ... implementation for touch events ... */ };
     const handleTouchEnd = (e: React.TouchEvent) => { /* ... implementation for touch events ... */ };
@@ -505,9 +636,9 @@ const NoteEditor: React.FC<{
         { id: 'redo', label: 'Redo', action: redo, icon: <Redo/> },
     ];
     const clipboardTools = [
-        { id: 'cut', label: 'Cut', action: () => {}, icon: <Scissors/> },
-        { id: 'copy', label: 'Copy', action: () => {}, icon: <Copy/> },
-        { id: 'paste', label: 'Paste', action: () => {}, icon: <ClipboardPaste/> },
+        { id: 'cut', label: 'Cut', action: handleCut, icon: <Scissors/> },
+        { id: 'copy', label: 'Copy', action: handleCopy, icon: <Copy/> },
+        { id: 'paste', label: 'Paste', action: handlePaste, icon: <ClipboardPaste/> },
     ];
 
     return (
@@ -538,7 +669,7 @@ const NoteEditor: React.FC<{
                     {actionTools.map(tool => ( <button key={tool.id} onClick={tool.action} className="p-2 rounded-lg hover:bg-gray-100" title={tool.label}>{tool.icon}</button>))}
                     <div className="h-8 border-l mx-1"></div>
                     {clipboardTools.map(tool => ( <button key={tool.id} onClick={tool.action} className="p-2 rounded-lg hover:bg-gray-100" title={tool.label}>{tool.icon}</button>))}
-                    <button onClick={() => {}} className="p-2 text-red-500 hover:bg-red-100 rounded-lg" title="Delete Selection"><Trash2/></button>
+                    <button onClick={handleDeleteSelected} className="p-2 text-red-500 hover:bg-red-100 rounded-lg" title="Delete Selection"><Trash2/></button>
                 </div>
             </div>
 

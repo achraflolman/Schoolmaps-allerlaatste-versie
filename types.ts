@@ -70,6 +70,7 @@ export interface AppUser {
     totalStars?: number;
     goals?: string[];
     syncedCalendars?: SyncedCalendar[];
+    purchasedFileIds?: string[];
 }
 
 export interface FileData {
@@ -81,6 +82,18 @@ export interface FileData {
     createdAt: FirebaseTimestamp;
     fileUrl: string;
     storagePath: string;
+    isPublic?: boolean;
+    // New fields for rich previews
+    fileType?: 'pdf' | 'image' | 'other';
+    pageCount?: number;
+    // Star System Fields
+    starPrice?: number;
+    uploaderName?: string;
+    downloads?: number;
+    averageRating?: number;
+    ratingCount?: number;
+    ratings?: { [userId: string]: number }; // Map of userId to their rating (1-5)
+    isPlaceholder?: boolean;
 }
 
 export interface CalendarEvent {
@@ -241,4 +254,24 @@ export interface ChatHistory {
     createdAt: FirebaseTimestamp;
     updatedAt: FirebaseTimestamp;
     messages: ChatMessage[];
+}
+
+export interface ChatMessageData {
+    id: string;
+    senderId: string;
+    text: string;
+    createdAt: FirebaseTimestamp;
+}
+
+export interface Chat {
+    id: string; // Composite key e.g., uid1_uid2
+    participantIds: string[];
+    participantInfo: {
+        [uid: string]: {
+            name: string;
+            avatar: string | null;
+        };
+    };
+    lastMessageAt: FirebaseTimestamp;
+    lastMessageText: string;
 }
