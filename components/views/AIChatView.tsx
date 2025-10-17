@@ -3,7 +3,82 @@ import { GoogleGenAI, Chat, FunctionDeclaration, Tool, Type, GenerateContentResp
 import { Send, Loader2, Bot, User, X, Settings, Save, History, PlusCircle, ArrowLeft, CheckCircle } from 'lucide-react';
 import { Timestamp, db, appId, arrayUnion } from '../../services/firebase';
 import type { AppUser, ModalContent, CalendarEvent, StudyPlan, ChatMessage, ChatHistory } from '../../types';
-import { marked } from 'marked';
+
+const escapeHtml = (value: string) =>
+    value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+const formatInlineMarkdown = (value: string) => {
+    let formatted = value;
+    formatted = formatted.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    formatted = formatted.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return formatted;
+};
+
+const renderMarkdown = (markdown: string) => {
+    if (!markdown) return '';
+
+    const lines = markdown.split(/\r?\n/);
+    const html: string[] = [];
+    let inUnorderedList = false;
+    let inOrderedList = false;
+
+    const closeLists = () => {
+        if (inUnorderedList) {
+            html.push('</ul>');
+            inUnorderedList = false;
+        }
+        if (inOrderedList) {
+            html.push('</ol>');
+            inOrderedList = false;
+        }
+    };
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+
+        if (/^[-*+]\s+/.test(trimmed)) {
+            if (!inUnorderedList) {
+                closeLists();
+                inUnorderedList = true;
+                html.push('<ul class="list-disc pl-5 space-y-1">');
+            }
+            const content = trimmed.replace(/^[-*+]\s+/, '');
+            html.push(`<li>${formatInlineMarkdown(escapeHtml(content))}</li>`);
+            continue;
+        }
+
+        if (/^\d+\.\s+/.test(trimmed)) {
+            if (!inOrderedList) {
+                closeLists();
+                inOrderedList = true;
+                html.push('<ol class="list-decimal pl-5 space-y-1">');
+            }
+            const content = trimmed.replace(/^\d+\.\s+/, '');
+            html.push(`<li>${formatInlineMarkdown(escapeHtml(content))}</li>`);
+            continue;
+        }
+
+        closeLists();
+
+        if (!trimmed) {
+            html.push('<p>&nbsp;</p>');
+            continue;
+        }
+
+        html.push(`<p>${formatInlineMarkdown(escapeHtml(trimmed))}</p>`);
+    }
+
+    closeLists();
+
+    return html.join('');
+};
 
 interface AIChatViewProps {
     user: AppUser;
@@ -108,7 +183,7 @@ const ChatBubble: React.FC<{
     }, [isTyping, msg.text]);
     
     const bubbleContent = useMemo(() => {
-        return { __html: marked.parse(displayedText || '', { gfm: true, breaks: true }) };
+        return { __html: renderMarkdown(displayedText || '') };
     }, [displayedText]);
 
     return (

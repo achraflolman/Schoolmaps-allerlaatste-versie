@@ -1,5 +1,6 @@
-// FIX: Fix Firebase imports to use the v9 compatibility layer, which provides the v8 namespaced API.
-// This resolves errors where properties like `apps`, `auth`, and `firestore` were not found on the imported `firebase` object.
+// Use the Firebase v8 style namespaced SDK which matches the dependency in package.json.
+// Importing from the non-compat entry points keeps the bundle size smaller and avoids
+// resolution issues when the compat build is unavailable.
 import firebase from 'firebase/app';
 
 import 'firebase/auth';
