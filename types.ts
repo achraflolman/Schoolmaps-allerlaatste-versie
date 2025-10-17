@@ -70,6 +70,7 @@ export interface AppUser {
     totalStars?: number;
     goals?: string[];
     syncedCalendars?: SyncedCalendar[];
+    hapticsEnabled?: boolean;
     purchasedFileIds?: string[];
 }
 

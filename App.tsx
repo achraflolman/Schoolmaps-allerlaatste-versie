@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Menu, LogOut, Camera, Bell, Flame, Loader2, Bot, X } from 'lucide-react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Tool, Type } from '@google/genai';
@@ -19,7 +21,6 @@ import ToolsView from './components/views/ToolsView';
 import Sidebar from './components/ui/Sidebar';
 import OfflineIndicator from './components/ui/OfflineIndicator';
 import NotesView from './components/views/tools/NotesView';
-import IntroTutorialView from './components/views/IntroTutorialView';
 import AdminView from './components/views/AdminView';
 import NotificationsView from './components/views/NotificationsView';
 import EmailVerificationView from './components/views/EmailVerificationView';
@@ -34,6 +35,9 @@ import AIChatView from './components/views/AIChatView';
 import AISetupView from './components/views/AISetupView';
 import SubjectSelectionView from './components/views/SubjectSelectionView';
 import MainAppLayout from './components/views/MainAppLayout';
+import TypingWelcomeView from './components/views/TypingWelcomeView';
+import IntroTutorialView from './components/views/IntroTutorialView';
+import LogoutAnimationView from './components/views/LogoutAnimationView';
 
 
 type AppStatus = 'initializing' | 'unauthenticated' | 'authenticated' | 'awaiting-verification';
@@ -163,7 +167,7 @@ const App: React.FC = () => {
     const [isAdmin, setIsAdmin] = useState(false);
     const [appStatus, setAppStatus] = useState<AppStatus>('initializing');
     const [modalContent, setModalContent] = useState<ModalContent | null>(null);
-    const [themeColor, setThemeColor] = useState(localStorage.getItem('themeColor') || 'emerald');
+    const [themeColor, setThemeColor] = useState(localStorage.getItem('themeColor') || 'blue');
     const [language, setLanguage] = useState<'nl' | 'en'>((localStorage.getItem('appLanguage') as 'nl' | 'en') || 'nl');
     const [fontFamily, setFontFamily] = useState(localStorage.getItem('fontFamily') || 'inter');
     const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
@@ -175,6 +179,8 @@ const App: React.FC = () => {
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [showIntro, setShowIntro] = useState(false);
     const [introChecked, setIntroChecked] = useState(false);
+    const [introStage, setIntroStage] = useState<'typing' | 'tutorial' | 'done'>('typing');
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [isUserDetailModalOpen, setIsUserDetailModalOpen] = useState(false);
     const [selectedUserForDetail, setSelectedUserForDetail] = useState<AppUser | null>(null);
     const [isPinVerificationModalOpen, setIsPinVerificationModalOpen] = useState(false);
@@ -227,6 +233,17 @@ const App: React.FC = () => {
     const [isMinLoadingTimePassed, setIsMinLoadingTimePassed] = useState(false);
     
     const allEvents = useMemo(() => [...userEvents, ...syncedEvents], [userEvents, syncedEvents]);
+    
+    const triggerHapticFeedback = useCallback((pattern: number | number[] = 50) => {
+        if (user?.hapticsEnabled && 'vibrate' in navigator) {
+            try {
+                navigator.vibrate(pattern);
+            } catch (e) {
+                console.warn("Haptic feedback failed", e);
+            }
+        }
+    }, [user?.hapticsEnabled]);
+
 
     // Memoized theme and translation functions
     const themeStyles: { [color: string]: { [variant: string]: string } } = {
@@ -250,12 +267,12 @@ const App: React.FC = () => {
 
     const getThemeClasses = useCallback((variant: string): string => {
         const currentTheme = isAdmin ? adminSettings?.themePreference : themeColor;
-        return (themeStyles[currentTheme || 'emerald']?.[variant]) || themeStyles['emerald'][variant] || '';
+        return (themeStyles[currentTheme || 'blue']?.[variant]) || themeStyles['blue'][variant] || '';
     }, [themeColor, isAdmin, adminSettings]);
     
     const getAuthThemeClasses = useCallback((variant: string): string => {
-        // Auth view should always be the default green theme
-        return (themeStyles['emerald']?.[variant]) || '';
+        // Auth view should always be the default theme
+        return (themeStyles['blue']?.[variant]) || '';
     }, []);
 
     const t = useCallback((key: string, replacements: { [key: string]: string | number } = {}): string => {
@@ -307,6 +324,7 @@ const App: React.FC = () => {
             console.error("Could not set localStorage item:", error);
         }
         setShowIntro(false);
+        setIntroStage('done');
     }, []);
 
     const handleSkipVerification = () => {
@@ -403,17 +421,13 @@ const App: React.FC = () => {
     const handleLogout = useCallback(() => {
         showAppModal({
             text: t('confirm_logout'),
-            confirmAction: async () => {
-                sessionStorage.setItem('logout-event', 'true');
-                sessionStorage.removeItem('studybox_verification_skipped');
-                await auth.signOut();
-                setIsAdmin(false);
-                setIsPinVerified(false);
-                setAdminSettings(null);
+            confirmAction: () => {
+                triggerHapticFeedback();
+                setIsLoggingOut(true);
             },
             cancelAction: () => {}
         });
-    }, [showAppModal, t]);
+    }, [showAppModal, t, triggerHapticFeedback]);
 
     const handleGoHome = useCallback(() => {
         setCurrentView('home');
@@ -702,15 +716,17 @@ const App: React.FC = () => {
                 const broadcastId = broadcastDoc.id;
                 if (!existingBroadcastIds.has(broadcastId) && !dismissedBroadcastIds.includes(broadcastId)) {
                     const broadcastData = broadcastDoc.data();
-                    const newNotifRef = userNotifsRef.doc();
-                    batch.set(newNotifRef, {
-                        title: broadcastData.title,
-                        text: broadcastData.message,
-                        type: 'admin', read: false,
-                        createdAt: broadcastData.createdAt,
-                        broadcastId: broadcastId,
-                    });
-                    hasNewBroadcasts = true;
+                    if (localUser.createdAt && broadcastData.createdAt.toMillis() > localUser.createdAt.toMillis()) {
+                        const newNotifRef = userNotifsRef.doc();
+                        batch.set(newNotifRef, {
+                            title: broadcastData.title,
+                            text: broadcastData.message,
+                            type: 'admin', read: false,
+                            createdAt: broadcastData.createdAt,
+                            broadcastId: broadcastId,
+                        });
+                        hasNewBroadcasts = true;
+                    }
                 }
               }
             });
@@ -1144,10 +1160,6 @@ const App: React.FC = () => {
                 setIsAdmin(false);
                 setAdminSettings(null);
                 resetAIChat();
-                if (sessionStorage.getItem('logout-event') === 'true') {
-                    showAppModal({ text: t('success_logout') });
-                    sessionStorage.removeItem('logout-event');
-                }
                 setAppStatus('unauthenticated');
                 return;
             }
@@ -1218,7 +1230,7 @@ const App: React.FC = () => {
                         profilePictureUrl: firebaseUser.photoURL || 'NONE', createdAt: Timestamp.now(), selectedSubjects: [], customSubjects: [],
                         schoolName: '', className: '', educationLevel: '', languagePreference: language, themePreference: themeColor,
                         fontPreference: 'inter', homeLayout: defaultHomeLayout, streakCount: 1, lastLoginDate: Timestamp.now(),
-                        notificationsEnabled: true, disabled: false, isVerifiedByEmail: firebaseUser.emailVerified,
+                        notificationsEnabled: true, disabled: false, isVerifiedByEmail: true,
                         focusDuration: 25, breakDuration: 5, dismissedBroadcastIds: [], dismissedFeedbackIds: [],
                         aiBotName: 'AI Assistent', aiBotAvatarUrl: null, hasCompletedOnboarding: false, goals: [], syncedCalendars: [],
                     };
@@ -1232,14 +1244,9 @@ const App: React.FC = () => {
                     if (settingsDoc.exists) {
                         setAdminSettings(settingsDoc.data() as AdminSettings);
                     } else {
-                         const defaultAdminSettings: AdminSettings = { themePreference: 'emerald', pinProtectionEnabled: true, fontPreference: 'inter' };
+                         const defaultAdminSettings: AdminSettings = { themePreference: 'blue', pinProtectionEnabled: true, fontPreference: 'inter' };
                          await db.doc(`adminSettings/global`).set(defaultAdminSettings);
                          setAdminSettings(defaultAdminSettings);
-                    }
-                } else {
-                    if (!firebaseUser.emailVerified && !verificationSkipped) {
-                         setAppStatus('awaiting-verification');
-                         return;
                     }
                 }
                 
@@ -1251,7 +1258,7 @@ const App: React.FC = () => {
         });
 
         return () => authSubscriber();
-    }, [showAppModal, t, resetAIChat, language, themeColor, verificationSkipped]);
+    }, [showAppModal, t, resetAIChat, language, themeColor]);
 
 
      // Effect to initialize AI Chat
@@ -1279,14 +1286,14 @@ const App: React.FC = () => {
 
             const tools: Tool[] = [{ functionDeclarations: [addEventTool, removeEventTool, getEventsTool, getStudyPlansTool, getStudyPlanDetailsTool] }];
             const todayString = new Date().toISOString().split('T')[0];
-            const systemInstructionText = t('ai_system_instruction', { botName: user.aiBotName || 'AI Assistent', userName: user.userName, subjects: availableSubjects.join(', '), todayDate: todayString });
+            const systemInstructionText = t('ai_system_instruction', { botName: user.aiBotName || 'Mimi', userName: user.userName, subjects: availableSubjects.join(', '), todayDate: todayString });
             
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const chatInstance = ai.chats.create({ model: 'gemini-2.5-flash', config: { systemInstruction: systemInstructionText, tools: tools } });
             setAiChat(chatInstance);
 
             if (aiChatMessages.length === 0 && !currentChatSessionId) {
-                setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome', { userName: user.userName.split(' ')[0], botName: user.aiBotName || 'AI Assistant' }) }]);
+                setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome', { userName: user.userName.split(' ')[0], botName: user.aiBotName || 'Mimi' }) }]);
             }
         }
     }, [user, isAdmin, aiChat, aiChatMessages.length, t, currentChatSessionId]);
@@ -1330,6 +1337,7 @@ const App: React.FC = () => {
             const introSeen = localStorage.getItem('studybox_intro_seen');
             if (introSeen !== 'true') {
                 setShowIntro(true);
+                setIntroStage('typing'); // Reset stage when intro is needed
             }
         } catch (error) {
             setShowIntro(false);
@@ -1375,7 +1383,7 @@ const App: React.FC = () => {
                  .ai-chat-button { transition: bottom 0.3s ease-in-out; }
                  body.drawing-editor-active .ai-chat-button { bottom: 6.5rem; }
              `}</style>
-            {modalContent && <CustomModal {...{ ...modalContent, onClose: closeAppModal, t, getThemeClasses }} />}
+            {modalContent && <CustomModal {...{ ...modalContent, onClose: closeAppModal, t, getThemeClasses, triggerHapticFeedback }} />}
             <BroadcastModal isOpen={isBroadcastModalOpen} onClose={() => setIsBroadcastModalOpen(false)} broadcast={selectedBroadcast} t={t} getThemeClasses={getThemeClasses} />
             {user && <AvatarSelectionModal isOpen={isAvatarModalOpen} onClose={() => setIsAvatarModalOpen(false)} onSave={handleAvatarSave} currentUser={user} t={t} getThemeClasses={getThemeClasses}/>}
             <ReauthModal isOpen={isReauthModalOpen} onClose={() => setIsReauthModalOpen(false)} onSuccess={handleDeleteAccount} t={t} getThemeClasses={getThemeClasses} />
@@ -1404,11 +1412,23 @@ const App: React.FC = () => {
             <UserDetailModal isOpen={isUserDetailModalOpen} onClose={() => setIsUserDetailModalOpen(false)} user={selectedUserForDetail} {...{t, tSubject, getThemeClasses, showAppModal}} />
             <PinVerificationModal isOpen={isPinVerificationModalOpen} onClose={() => setIsPinVerificationModalOpen(false)} onSuccess={handlePinDisableConfirm} t={t} getThemeClasses={getThemeClasses} />
             
-            {isLoading && <LoadingScreen getThemeClasses={getAuthThemeClasses} />}
-            
-            {!isLoading && (
+            {isLoggingOut ? (
+                <LogoutAnimationView 
+                    getThemeClasses={getAuthThemeClasses}
+                    onAnimationEnd={() => {
+                        auth.signOut().then(() => {
+                            setIsLoggingOut(false);
+                        });
+                    }}
+                    t={t}
+                    userName={user?.userName || ''}
+                    triggerHapticFeedback={triggerHapticFeedback}
+                />
+            ) : isLoading ? (
+                <LoadingScreen getThemeClasses={getAuthThemeClasses} />
+            ) : (
               <>
-                {appStatus === 'awaiting-verification' && user && !verificationSkipped && (
+                {appStatus === 'awaiting-verification' && user && (
                      <EmailVerificationView 
                         user={user}
                         t={t}
@@ -1420,11 +1440,31 @@ const App: React.FC = () => {
 
                 {appStatus === 'unauthenticated' && introChecked && (
                     showIntro ? (
-                        <IntroTutorialView
-                            onFinish={handleIntroFinish}
-                            t={t}
-                            getThemeClasses={getAuthThemeClasses}
-                        />
+                         <div className={`relative w-full h-screen overflow-hidden ${getAuthThemeClasses('bg')}`}>
+                            <div className={`absolute inset-0 transition-all duration-500 ease-in-out flex items-center justify-center ${introStage === 'typing' ? 'opacity-100 transform-none pointer-events-auto' : 'opacity-0 -translate-y-8 pointer-events-none'}`}>
+                                <TypingWelcomeView
+                                    onContinue={() => {
+                                        triggerHapticFeedback();
+                                        setIntroStage('tutorial');
+                                    }}
+                                    t={t}
+                                    getThemeClasses={getAuthThemeClasses}
+                                    triggerHapticFeedback={triggerHapticFeedback}
+                                />
+                            </div>
+                            <div className={`absolute inset-0 transition-all duration-500 ease-in-out flex items-center justify-center ${introStage === 'tutorial' ? 'opacity-100 transform-none pointer-events-auto' : 'opacity-0 translate-y-8 pointer-events-none'}`}>
+                                <IntroTutorialView
+                                    onFinish={handleIntroFinish}
+                                    onBack={() => {
+                                        triggerHapticFeedback(30);
+                                        setIntroStage('typing');
+                                    }}
+                                    t={t}
+                                    getThemeClasses={getAuthThemeClasses}
+                                    triggerHapticFeedback={triggerHapticFeedback}
+                                />
+                            </div>
+                        </div>
                     ) : (
                         <AuthView {...{ showAppModal, t, getThemeClasses: getAuthThemeClasses, tSubject }} />
                     )

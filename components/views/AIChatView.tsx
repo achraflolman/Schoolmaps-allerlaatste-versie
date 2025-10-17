@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Tool, Type, GenerateContentResponse, FunctionCall } from '@google/genai';
 import { Send, Loader2, Bot, User, X, Settings, Save, History, PlusCircle, ArrowLeft, CheckCircle } from 'lucide-react';
 import { Timestamp, db, appId, arrayUnion } from '../../services/firebase';
@@ -90,16 +91,19 @@ const ChatBubble: React.FC<{
 
     useEffect(() => {
         if (isTyping) {
-            let i = 0;
+            let index = 0;
             const textToType = msg.text || '';
             setDisplayedText(''); // Reset before typing
             const intervalId = setInterval(() => {
-                if (i < textToType.length) {
-                    setDisplayedText(prev => prev + textToType.charAt(i));
-                    i++;
-                } else {
-                    clearInterval(intervalId);
-                }
+                setDisplayedText(currentText => {
+                    if (index >= textToType.length) {
+                        clearInterval(intervalId);
+                        return currentText;
+                    }
+                    index++;
+                    // Use slice which handles unicode characters correctly
+                    return textToType.slice(0, index);
+                });
             }, 15); // Adjust typing speed
             return () => clearInterval(intervalId);
         } else {
@@ -113,7 +117,13 @@ const ChatBubble: React.FC<{
 
     return (
         <div className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
-            {msg.role === 'model' && <div className={`p-2 rounded-full flex-shrink-0 text-white ${getThemeClasses('bg')}`}><Bot size={16}/></div>}
+            {msg.role === 'model' && (
+                (user.aiBotName?.toLowerCase() === 'mimi') ? (
+                    <img src="https://i.imgur.com/8b2I3vE.png" alt="Mimi" className="w-8 h-8 rounded-full"/>
+                ) : (
+                    <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white ${getThemeClasses('bg')}`}><Bot size={20}/></div>
+                )
+            )}
             <div
                 className={`prose max-w-xs p-3 rounded-xl ${msg.role === 'model' ? 'bg-gray-100' : `${getThemeClasses('bg')} text-white`}`}
                 dangerouslySetInnerHTML={bubbleContent}
@@ -121,7 +131,7 @@ const ChatBubble: React.FC<{
             {msg.role === 'user' && (
                 user.profilePictureUrl && user.profilePictureUrl !== 'NONE' 
                     ? <img src={user.profilePictureUrl} className="w-8 h-8 rounded-full object-cover"/> 
-                    : <div className="p-2 rounded-full bg-gray-200"><User size={16}/></div>
+                    : <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-200"><User size={20}/></div>
             )}
         </div>
     );
@@ -144,18 +154,36 @@ const AIChatView: React.FC<AIChatViewProps> = ({
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, isLoading]);
 
-    const generateTitleForChat = async (chatMessages: ChatMessage[]): Promise<string> => {
-        if (!process.env.API_KEY) return 'Chat';
+    const generateTitleForChat = useCallback(async (chatMessages: ChatMessage[]): Promise<string> => {
+        if (!process.env.API_KEY) return t('new_chat');
+
+        const fallbackTitle = () => {
+            const firstUserMessage = chatMessages.find(m => m.role === 'user')?.text;
+            if (firstUserMessage) {
+                return firstUserMessage.substring(0, 35) + (firstUserMessage.length > 35 ? '...' : '');
+            }
+            return t('new_chat');
+        };
+
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const prompt = `Summarize the following conversation in 5 words or less to use as a title. The conversation is between a user and a study assistant. Focus on the main topic. Conversation:\n\n${chatMessages.slice(1, 4).map(m => `${m.role}: ${m.text}`).join('\n')}`;
+            const conversationSnippet = chatMessages.slice(1, 4).map(m => `${m.role}: ${m.text}`).join('\n');
+            const prompt = t('ai_title_generation_prompt') + conversationSnippet;
+
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
-            return response.text.trim().replace(/["']/g, '');
+            let title = response.text.trim().replace(/["']/g, '');
+            if (title.toLowerCase().startsWith('title:')) {
+                title = title.substring(6).trim();
+            }
+            if (!title) {
+                return fallbackTitle();
+            }
+            return title;
         } catch (error) {
             console.error("Title generation failed:", error);
-            return t('error_generating_title');
+            return fallbackTitle();
         }
-    };
+    }, [t]);
     
     const handleSend = async () => {
         if (!input.trim() || !chat || isLoading) return;
@@ -216,16 +244,12 @@ const AIChatView: React.FC<AIChatViewProps> = ({
             setIsLoading(false);
             const modelMessage: ChatMessage = { role: 'model', text: response.text || "Sorry, I received an empty response." };
             setMessages(prev => [...prev, modelMessage]);
-
-            // This effect happens after the state update that includes the model's message
-            // so `allMessages` will be up-to-date for saving.
         } catch (error) {
             setIsLoading(false);
             setMessages(prev => [...prev, { role: 'model', text: `Sorry, something went wrong. Error: ${(error as Error).message}` }]);
         }
     };
     
-    // Effect for saving chat history after a model's response is fully added
     useEffect(() => {
         if (messages.length > 0 && messages[messages.length - 1].role === 'model') {
             const saveHistory = async () => {
@@ -241,7 +265,7 @@ const AIChatView: React.FC<AIChatViewProps> = ({
             };
             saveHistory();
         }
-    }, [messages]);
+    }, [messages, currentChatSessionId, userId, generateTitleForChat, t, setCurrentChatSessionId]);
     
     const handleHistorySelect = (history: ChatHistory) => {
         setCurrentChatSessionId(history.id);
@@ -310,7 +334,7 @@ const AIChatView: React.FC<AIChatViewProps> = ({
 
             <div className="p-4 border-t">
                 <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex items-center gap-2">
-                    <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder={t('ai_chat_placeholder')} className="flex-grow p-2 border rounded-lg"/>
+                    <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder={t('ai_chat_placeholder', { botName: user.aiBotName || 'AI' })} className="flex-grow p-2 border rounded-lg"/>
                     <button type="submit" disabled={isLoading} className={`p-3 rounded-lg text-white ${getThemeClasses('bg')} disabled:opacity-50`}>
                         {isLoading ? <Loader2 className="animate-spin"/> : <Send/>}
                     </button>

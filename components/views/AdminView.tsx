@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { db, appId, Timestamp, arrayUnion } from '../../services/firebase';
 import type { AppUser, ModalContent, BroadcastData, Feedback, AdminSettings } from '../../types';
@@ -29,6 +30,7 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
     const [replyText, setReplyText] = useState('');
+    const [sendAsStudyBox, setSendAsStudyBox] = useState(false);
     
     const fetchAllData = useCallback(async (tab: string) => {
         setIsLoading(true);
@@ -83,10 +85,11 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
         }
         setIsSending(true);
         try {
+            const senderName = sendAsStudyBox ? 'StudyBox' : user.userName;
             await db.collection(`broadcasts`).add({
                 title: broadcastTitle,
                 message: broadcastMessage,
-                sender: user.userName,
+                sender: senderName,
                 createdAt: Timestamp.now(),
             });
             showAppModal({ text: t('broadcast_success') });
@@ -279,8 +282,8 @@ const AdminView: React.FC<AdminViewProps> = ({ user, t, tSubject, getThemeClasse
                 )}
                 {activeTab === 'broadcasts' && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-1 bg-white p-6 rounded-lg shadow-md"><h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Send /> {t('send_broadcast')}</h2><div className="space-y-3"><input value={broadcastTitle} onChange={(e) => setBroadcastTitle(e.target.value)} placeholder={t('broadcast_title_placeholder')} className="w-full p-2 border rounded-lg" /><textarea value={broadcastMessage} onChange={(e) => setBroadcastMessage(e.target.value)} placeholder={t('broadcast_message_placeholder')} rows={4} className="w-full p-2 border rounded-lg" disabled={isSending}/><button onClick={handleSendBroadcast} disabled={isSending} className={`w-full ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors active:scale-95 disabled:opacity-60`}>{isSending ? t('sending') : t('send_message_button')}</button></div></div>
-                        <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-md"><div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">{t('past_broadcasts')}</h2><button onClick={handleDeleteAllBroadcasts} disabled={broadcasts.length === 0} className="flex items-center gap-2 text-sm text-red-600 bg-red-100 hover:bg-red-200 font-semibold px-3 py-2 rounded-lg transition-colors active:scale-95 disabled:opacity-50"><Trash2 size={16}/>{t('delete_all_broadcasts')}</button></div><div className="space-y-3 max-h-[60vh] overflow-y-auto">{broadcasts.length === 0 ? <p>{t('no_past_broadcasts')}</p> : broadcasts.map(b=>(<div key={b.id} className="p-3 bg-gray-50 rounded-md"><p className="font-bold">{b.title}</p><p className="text-sm text-gray-700">{b.message}</p><p className="text-xs text-gray-400 mt-1">{(b.createdAt as any).toDate().toLocaleString()}</p></div>))}</div></div>
+                        <div className="lg:col-span-1 bg-white p-6 rounded-lg shadow-md"><h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Send /> {t('send_broadcast')}</h2><div className="space-y-3"><input value={broadcastTitle} onChange={(e) => setBroadcastTitle(e.target.value)} placeholder={t('broadcast_title_placeholder')} className="w-full p-2 border rounded-lg" /><textarea value={broadcastMessage} onChange={(e) => setBroadcastMessage(e.target.value)} placeholder={t('broadcast_message_placeholder')} rows={4} className="w-full p-2 border rounded-lg" disabled={isSending}/><div className="flex items-center gap-2"><input type="checkbox" id="sendAsStudyBox" checked={sendAsStudyBox} onChange={(e) => setSendAsStudyBox(e.target.checked)} className="h-4 w-4 rounded"/><label htmlFor="sendAsStudyBox" className="text-sm font-medium">{t('send_as_studybox')}</label></div><button onClick={handleSendBroadcast} disabled={isSending} className={`w-full ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors active:scale-95 disabled:opacity-60`}>{isSending ? t('sending') : t('send_message_button')}</button></div></div>
+                        <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-md"><div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">{t('past_broadcasts')}</h2><button onClick={handleDeleteAllBroadcasts} disabled={broadcasts.length === 0} className="flex items-center gap-2 text-sm text-red-600 bg-red-100 hover:bg-red-200 font-semibold px-3 py-2 rounded-lg transition-colors active:scale-95 disabled:opacity-50"><Trash2 size={16}/>{t('delete_all_broadcasts')}</button></div><div className="space-y-3 max-h-[60vh] overflow-y-auto">{broadcasts.length === 0 ? <p>{t('no_past_broadcasts')}</p> : broadcasts.map(b=>(<div key={b.id} className="p-3 bg-gray-50 rounded-md"><p className="font-bold">{b.title} <span className="text-xs text-gray-500 font-normal">({t('from')}: {b.sender})</span></p><p className="text-sm text-gray-700">{b.message}</p><p className="text-xs text-gray-400 mt-1">{(b.createdAt as any).toDate().toLocaleString()}</p></div>))}</div></div>
                     </div>
                 )}
                 {activeTab === 'feedback' && (

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { db, Timestamp } from '../../../services/firebase';
 import { GoogleGenAI } from '@google/genai';
@@ -7,7 +8,7 @@ import { PlusCircle, Save, Trash2, Edit, NotebookPen, ChevronDown, MousePointer,
 interface NotesViewProps {
   userId: string;
   user: AppUser;
-  t: (key: string) => string;
+  t: (key: string, replacements?: any) => string;
   tSubject: (key: string) => string;
   getThemeClasses: (variant: string) => string;
   showAppModal: (content: ModalContent) => void;
@@ -127,13 +128,15 @@ const AIGenerateNoteModal: React.FC<{
     onGenerate: (prompt: string) => Promise<void>;
     isGenerating: boolean;
     getThemeClasses: (variant: string) => string;
-}> = ({ isOpen, onClose, onGenerate, isGenerating, getThemeClasses }) => {
+    t: (key: string, replacements?: any) => string;
+    botName: string;
+}> = ({ isOpen, onClose, onGenerate, isGenerating, getThemeClasses, t, botName }) => {
     const [prompt, setPrompt] = useState('');
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={onClose}>
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                <h3 className="text-xl font-bold mb-4">Genereer Notities met AI</h3>
+                <h3 className="text-xl font-bold mb-4">{t('ai_generate_notes_title_mimi', { botName })}</h3>
                 <textarea
                     value={prompt}
                     onChange={e => setPrompt(e.target.value)}
@@ -159,7 +162,7 @@ const AIGenerateNoteModal: React.FC<{
 interface TextNoteEditorProps {
     note: Note;
     onBack: () => void;
-    t: (key: string) => string;
+    t: (key: string, replacements?: any) => string;
     getThemeClasses: (variant: string) => string;
     showAppModal: (c: ModalContent) => void;
     user: AppUser;
@@ -187,6 +190,7 @@ const TextNoteEditor: React.FC<TextNoteEditorProps> = ({ note, onBack, t, getThe
     const contentRef = useRef(note.content || '');
     const [isAIGenerateModalOpen, setIsAIGenerateModalOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
+    const botName = user.aiBotName || 'Mimi';
 
     useEffect(() => {
         contentRef.current = content;
@@ -229,35 +233,66 @@ const TextNoteEditor: React.FC<TextNoteEditorProps> = ({ note, onBack, t, getThe
 
             const editor = document.getElementById('note-editor-content');
             if (editor) {
-                const newContent = editor.innerHTML + (editor.innerHTML.trim() ? '<br><br>' : '') + generatedText;
-                editor.innerHTML = newContent;
-                setContent(newContent);
-                
-                if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-                saveTimeoutRef.current = setTimeout(() => {
-                    db.doc(`users/${note.ownerId}/notes/${note.id}`).update({
-                        content: newContent,
-                        updatedAt: Timestamp.now()
-                    });
-                }, 1500);
+                // Add line breaks if content already exists
+                if (editor.innerHTML.trim().length > 0) {
+                    editor.innerHTML += '<br><br>';
+                }
+
+                let i = 0;
+                const typingInterval = setInterval(() => {
+                    if (i >= generatedText.length) {
+                        clearInterval(typingInterval);
+                        setIsGenerating(false);
+                        
+                        // Final content update and save trigger
+                        const finalContent = editor.innerHTML;
+                        setContent(finalContent);
+                        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                        saveTimeoutRef.current = setTimeout(() => {
+                             db.doc(`users/${note.ownerId}/notes/${note.id}`).update({
+                                content: finalContent,
+                                updatedAt: Timestamp.now()
+                            });
+                        }, 500);
+
+                        return;
+                    }
+
+                    let char = generatedText[i];
+                    
+                    // If we find an HTML tag, append the whole thing at once
+                    if (char === '<') {
+                        const tagEndIndex = generatedText.indexOf('>', i);
+                        if (tagEndIndex !== -1) {
+                            const tag = generatedText.substring(i, tagEndIndex + 1);
+                            editor.innerHTML += tag;
+                            i = tagEndIndex + 1;
+                            return;
+                        }
+                    }
+                    
+                    editor.innerHTML += char;
+                    i++;
+
+                    editor.scrollTop = editor.scrollHeight;
+                }, 20);
             }
 
         } catch (error) {
             console.error(error);
             showAppModal({ text: "AI generation failed." });
-        } finally {
             setIsGenerating(false);
         }
     };
 
     return (
         <div className="w-full max-w-4xl mx-auto animate-fade-in">
-             <AIGenerateNoteModal isOpen={isAIGenerateModalOpen} onClose={() => setIsAIGenerateModalOpen(false)} onGenerate={handleAIGenerateText} isGenerating={isGenerating} getThemeClasses={getThemeClasses} />
+             <AIGenerateNoteModal isOpen={isAIGenerateModalOpen} onClose={() => setIsAIGenerateModalOpen(false)} onGenerate={handleAIGenerateText} isGenerating={isGenerating} getThemeClasses={getThemeClasses} t={t} botName={botName} />
              <div className="mb-4 flex justify-between items-center">
                 <button onClick={onBack} className="flex items-center gap-1 font-semibold bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg"><ArrowLeft size={16}/> {t('back_button')}</button>
                 <button onClick={() => setIsAIGenerateModalOpen(true)} disabled={isGenerating} className="flex items-center gap-2 font-semibold bg-purple-100 text-purple-700 hover:bg-purple-200 px-4 py-2 rounded-lg disabled:opacity-50">
                     {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16}/>}
-                    {isGenerating ? 'Genereren...' : 'Genereer met AI'}
+                    {isGenerating ? 'Genereren...' : t('generate_with_mimi', { botName })}
                 </button>
              </div>
             <div className={`p-6 sm:p-10 rounded-lg shadow-lg ${getThemeClasses('bg-light')}`}>

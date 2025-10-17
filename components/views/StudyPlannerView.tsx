@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { db, appId, Timestamp } from '../../services/firebase';
@@ -33,7 +34,7 @@ const SharePlanModal: React.FC<{
     const handleShare = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email)) {
-            showAppModal({ text: t('error_invalid_email') });
+            showAppModal({ text: t('error_share_invalid_email') });
             return;
         }
         if (email.toLowerCase() === user.email.toLowerCase()) {

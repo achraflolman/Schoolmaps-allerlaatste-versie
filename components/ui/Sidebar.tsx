@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Book, CalendarDays, Settings, X, BrainCircuit, BarChart3, Bell, Flame, LifeBuoy, Edit, ClipboardList, Bot, Files, Star, Search, LayoutDashboard, BookOpen, Sparkles, Store } from 'lucide-react';
 import type { AppUser } from '../../types';
@@ -72,7 +73,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, isSidebarOpen, setIsSidebarOpen
             </button>
             <p className={`mt-4 text-xl font-bold ${getThemeClasses('text-strong')}`}>{t('welcome_message', { name: userFirstName })} 👋</p>
             <div className="flex items-center gap-2 mt-1">
-                {user.streakCount && user.streakCount > 0 && (
+                {typeof user.streakCount === 'number' && (
                     <div className="flex items-center gap-1.5 bg-orange-100 text-orange-600 font-bold text-sm py-1 px-3 rounded-full">
                         <Flame className="w-4 h-4" />
                         <span>{user.streakCount}</span>

@@ -1,8 +1,4 @@
 
-
-
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { AppUser, ModalContent } from '../../types';
 import { auth } from '../../services/firebase';
@@ -82,6 +78,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
       schoolName: user.schoolName || '',
       className: user.className || '',
       educationLevel: user.educationLevel || '',
+      aiBotName: user.aiBotName || '',
   });
 
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>(user.selectedSubjects || []);
@@ -96,6 +93,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
       schoolName: user.schoolName || '',
       className: user.className || '',
       educationLevel: user.educationLevel || '',
+      aiBotName: user.aiBotName || '',
     });
     setSelectedSubjects(user.selectedSubjects || []);
     setHomeLayout(user.homeLayout || ['agenda', 'files']);
@@ -145,6 +143,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
         setIsSaving(true);
         await onProfileUpdate({
             ...formData,
+            aiBotName: formData.aiBotName.trim() || 'Mimi',
             selectedSubjects,
             customSubjects,
         });
@@ -264,6 +263,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, t, getThemeClasses, l
                     {educationLevels.map(level => <option key={level} value={level}>{tSubject(level)}</option>)}
                 </select>
                 
+                <div className="pt-4 border-t">
+                    <p className="font-semibold">{t('customize_ai_title')}</p>
+                     <div className="flex items-center gap-2">
+                        <Bot className="text-gray-500 flex-shrink-0"/>
+                        <input name="aiBotName" value={formData.aiBotName} onChange={handleInputChange} placeholder={t('bot_name_placeholder')} className="w-full p-2 border rounded-lg" />
+                     </div>
+                </div>
+
                 <div className="pt-4 border-t">
                     <p className="font-semibold">{t('add_custom_subject')}</p>
                      <div className="flex gap-2">

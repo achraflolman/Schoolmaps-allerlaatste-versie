@@ -7,12 +7,14 @@ interface CustomModalProps {
   cancelAction?: () => void;
   t: (key: string) => string;
   getThemeClasses: (variant: string) => string;
+  triggerHapticFeedback?: (pattern?: number | number[]) => void;
 }
 
-const CustomModal: React.FC<CustomModalProps> = ({ text, onClose, confirmAction, cancelAction, t, getThemeClasses }) => {
+const CustomModal: React.FC<CustomModalProps> = ({ text, onClose, confirmAction, cancelAction, t, getThemeClasses, triggerHapticFeedback }) => {
   const isConfirmModal = confirmAction && cancelAction;
 
   const handleConfirm = () => {
+    if (triggerHapticFeedback) triggerHapticFeedback();
     if(confirmAction) confirmAction();
     onClose();
   };

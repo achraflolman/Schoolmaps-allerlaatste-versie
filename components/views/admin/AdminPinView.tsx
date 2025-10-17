@@ -59,7 +59,7 @@ const AdminPinView: React.FC<AdminPinViewProps> = ({ user, onSuccess, t, getThem
   );
 
   return (
-    <div className={`min-h-screen w-full flex items-center justify-center p-4 bg-emerald-600 animate-fade-in-slow`}>
+    <div className={`min-h-screen w-full flex items-center justify-center p-4 bg-blue-600 animate-fade-in-slow`}>
       <style>{`
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
@@ -68,7 +68,7 @@ const AdminPinView: React.FC<AdminPinViewProps> = ({ user, onSuccess, t, getThem
         }
         .animate-shake { animation: shake 0.4s ease-in-out; }
       `}</style>
-      <div className="bg-emerald-500/50 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl p-6 sm:p-8 max-w-sm w-full text-center text-white animate-fade-in">
+      <div className="bg-blue-500/50 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl p-6 sm:p-8 max-w-sm w-full text-center text-white animate-fade-in">
         <img src={user.profilePictureUrl} alt="Admin" className="w-20 h-20 mx-auto rounded-full border-4 border-white/20 shadow-lg mb-3"/>
         <h2 className="text-2xl font-bold">Admin Verification</h2>
         <p className="text-white/70 mb-6">Please enter your security PIN.</p>

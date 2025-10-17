@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { Loader2, Target, GraduationCap, BarChart, BookOpen, Smile, Check } from 'lucide-react';
 import { db, appId, auth, Timestamp } from '../../services/firebase';
@@ -44,7 +45,6 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
   const [selectedRegSubjects, setSelectedRegSubjects] = useState<string[]>([]);
   const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       const { name, value } = e.target;
@@ -91,27 +91,10 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
         return true;
     };
     
-    const nextStep = async () => {
+    const nextStep = () => {
         if (!validateStep()) {
             return;
         }
-    
-        if (step === 1) {
-            setIsCheckingEmail(true);
-            try {
-                const methods = await auth.fetchSignInMethodsForEmail(formData.email);
-                if (methods.length > 0) {
-                    showAppModal({ text: t('error_email_in_use') });
-                    return; 
-                }
-            } catch (error) {
-                handleAuthError((error as any).code);
-                return; 
-            } finally {
-                setIsCheckingEmail(false);
-            }
-        }
-    
         setStep(s => s + 1);
     };
     const prevStep = () => setStep(s => s - 1);
@@ -133,9 +116,6 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
             if (!user) {
                 throw new Error("User creation failed.");
             }
-
-            // Send verification email
-            await user.sendEmailVerification();
             
             const profilePictureUrl = selectedAvatar === null ? 'NONE' : selectedAvatar;
             
@@ -151,29 +131,33 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
                 className: regClassName,
                 educationLevel: regEducationLevel,
                 languagePreference: regLanguage,
-                themePreference: 'emerald',
-                streakCount: 1,
+                themePreference: 'blue',
+                streakCount: 0,
                 lastLoginDate: Timestamp.now(),
                 notificationsEnabled: true,
                 disabled: false,
-                isVerifiedByEmail: false,
-                aiBotName: 'AI Assistent',
+                isVerifiedByEmail: true,
+                aiBotName: 'Mimi',
                 aiBotAvatarUrl: null,
                 hasCompletedOnboarding: false,
                 goals: selectedGoals,
-                totalStars: 20,
+                hapticsEnabled: true,
+                totalStars: 0,
                 purchasedFileIds: [],
             });
 
-            // Sign out immediately to prevent the app from auto-logging in the unverified user.
-            // This ensures a clean transition back to the login screen.
-            await auth.signOut();
-            
-            // Now show success message on the login screen.
-            showAppModal({ text: t('success_registration') });
-            setIsRegister(false);
-            setStep(1);
-            setFormData(prev => ({ ...prev, password: '' })); // Clear password for login
+            // Add welcome notification
+            const firstName = regName.split(' ')[0] || '';
+            await db.collection(`users/${user.uid}/notifications`).add({
+                title: t('welcome_notification_title'),
+                text: t('welcome_notification_text', { name: firstName }),
+                type: 'system',
+                read: false,
+                createdAt: Timestamp.now(),
+            });
+
+
+            // User is now automatically logged in via onAuthStateChanged in App.tsx
         } catch (error: any) {
             handleAuthError(error.code);
         } finally {
@@ -187,15 +171,8 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
           return;
       }
       try {
-        const userCredential = await auth.signInWithEmailAndPassword(email, password);
-        // onAuthStateChanged will handle view change. No need to set isSubmitting to false
-        // as the component will unmount on successful state change in App.tsx.
-        if (userCredential.user.email !== 'admin1069@gmail.com' && !userCredential.user.emailVerified) {
-            await auth.signOut();
-            showAppModal({ text: t('error_email_not_verified') });
-            setIsSubmitting(false);
-            return;
-        }
+        await auth.signInWithEmailAndPassword(email, password);
+        // onAuthStateChanged will handle view change.
       } catch (error: any) {
         handleAuthError(error.code);
         setIsSubmitting(false);
@@ -306,8 +283,8 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
         <div className="pt-2 flex justify-between items-center space-x-2">
             {step > 1 && <button type="button" onClick={prevStep} disabled={isSubmitting} className="font-semibold py-3 px-4 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition-all duration-200">{t('back_button')}</button>}
             {step < 5 ? (
-                <button type="button" onClick={nextStep} disabled={isSubmitting || isCheckingEmail} className={`w-full font-bold py-3 px-4 rounded-lg text-white ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} flex justify-center items-center`}>
-                    {isCheckingEmail ? <Loader2 className="w-5 h-5 animate-spin" /> : t('next_button')}
+                <button type="button" onClick={nextStep} disabled={isSubmitting} className={`w-full font-bold py-3 px-4 rounded-lg text-white ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} flex justify-center items-center`}>
+                    {t('next_button')}
                 </button>
             ) : (
                 <button type="submit" disabled={isSubmitting} className={`w-full font-bold py-3 px-4 rounded-lg text-white ${getThemeClasses('bg')} ${getThemeClasses('hover-bg')} shadow-lg hover:shadow-xl transition-all duration-200 transform active:scale-[.97] disabled:opacity-70 disabled:cursor-not-allowed`}>
