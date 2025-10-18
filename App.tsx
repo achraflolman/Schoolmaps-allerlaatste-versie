@@ -1182,29 +1182,40 @@ const App: React.FC = () => {
                     if (firebaseUser.emailVerified && !userData.isVerifiedByEmail) {
                         profileUpdate.isVerifiedByEmail = true;
                     }
-                    const today = new Date(); today.setHours(0, 0, 0, 0);
-                    const lastLogin = (userData.lastLoginDate as any)?.toDate();
-                    if(lastLogin) lastLogin.setHours(0, 0, 0, 0);
-
-                    if (!lastLogin || lastLogin.getTime() < today.getTime()) {
-                        const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-                        let newStreak = userData.streakCount || 0;
-
-                        if (lastLogin && lastLogin.getTime() < yesterday.getTime()) {
-                            if (newStreak > 0) {
-                                db.collection(`users/${firebaseUser.uid}/notifications`).doc().set({
+                    
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const lastLoginDate = userData.lastLoginDate?.toDate();
+                    if (lastLoginDate) {
+                        lastLoginDate.setHours(0, 0, 0, 0);
+                    }
+            
+                    // Only update streak if it's the first login of the day
+                    if (!lastLoginDate || lastLoginDate.getTime() < today.getTime()) {
+                        const yesterday = new Date(today);
+                        yesterday.setDate(today.getDate() - 1);
+                        
+                        const currentStreak = userData.streakCount || 0;
+                        let newStreak = 1; // Default to 1 for a new day's login
+                        
+                        // Continue streak if last login was yesterday
+                        if (lastLoginDate && lastLoginDate.getTime() === yesterday.getTime()) {
+                            newStreak = currentStreak + 1;
+                        } 
+                        // If login was before yesterday (or not today), the streak is broken
+                        else if (lastLoginDate && lastLoginDate.getTime() < yesterday.getTime()) {
+                            if (currentStreak > 0) {
+                                // Send notification only if there was a streak to lose
+                                db.collection(`users/${firebaseUser.uid}/notifications`).add({
                                     title: t('streak_lost_notification_title'),
-                                    text: t('streak_lost_notification_text', { count: newStreak }),
+                                    text: t('streak_lost_notification_text', { count: currentStreak }),
                                     type: 'streak', read: false, createdAt: Timestamp.now()
                                 });
                             }
-                            newStreak = 1;
-                        } else if (lastLogin && lastLogin.getTime() === yesterday.getTime()) {
-                            newStreak++;
-                        } else if (!lastLogin) {
-                            newStreak = 1;
+                            newStreak = 1; // Reset to 1
                         }
-                        
+                        // If !lastLoginDate, it's the first ever login, so streak is 1 (the default)
+            
                         profileUpdate.streakCount = newStreak;
                         profileUpdate.lastLoginDate = Timestamp.fromDate(today);
                     }
@@ -1232,7 +1243,7 @@ const App: React.FC = () => {
                         fontPreference: 'inter', homeLayout: defaultHomeLayout, streakCount: 1, lastLoginDate: Timestamp.now(),
                         notificationsEnabled: true, disabled: false, isVerifiedByEmail: true,
                         focusDuration: 25, breakDuration: 5, dismissedBroadcastIds: [], dismissedFeedbackIds: [],
-                        aiBotName: 'AI Assistent', aiBotAvatarUrl: null, hasCompletedOnboarding: false, goals: [], syncedCalendars: [],
+                        aiBotName: 'Studycat', aiBotAvatarUrl: null, hasCompletedOnboarding: false, goals: [], syncedCalendars: [],
                     };
                     await userDocRef.set(finalUser, { merge: true });
                     setUser(finalUser);
@@ -1286,14 +1297,14 @@ const App: React.FC = () => {
 
             const tools: Tool[] = [{ functionDeclarations: [addEventTool, removeEventTool, getEventsTool, getStudyPlansTool, getStudyPlanDetailsTool] }];
             const todayString = new Date().toISOString().split('T')[0];
-            const systemInstructionText = t('ai_system_instruction', { botName: user.aiBotName || 'Mimi', userName: user.userName, subjects: availableSubjects.join(', '), todayDate: todayString });
+            const systemInstructionText = t('ai_system_instruction', { botName: user.aiBotName || 'Studycat', userName: user.userName, subjects: availableSubjects.join(', '), todayDate: todayString });
             
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const chatInstance = ai.chats.create({ model: 'gemini-2.5-flash', config: { systemInstruction: systemInstructionText, tools: tools } });
             setAiChat(chatInstance);
 
             if (aiChatMessages.length === 0 && !currentChatSessionId) {
-                setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome', { userName: user.userName.split(' ')[0], botName: user.aiBotName || 'Mimi' }) }]);
+                setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome', { userName: user.userName.split(' ')[0], botName: user.aiBotName || 'Studycat' }) }]);
             }
         }
     }, [user, isAdmin, aiChat, aiChatMessages.length, t, currentChatSessionId]);

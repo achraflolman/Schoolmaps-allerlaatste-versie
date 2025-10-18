@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { GoogleGenAI, Chat, FunctionDeclaration, Tool, Type, GenerateContentResponse, FunctionCall } from '@google/genai';
+import { GoogleGenAI, Chat, FunctionDeclaration, Tool, Type, GenerateContentResponse, FunctionCall, Part } from '@google/genai';
 import { Send, Loader2, Bot, User, X, Settings, Save, History, PlusCircle, ArrowLeft, CheckCircle } from 'lucide-react';
 import { Timestamp, db, appId, arrayUnion } from '../../services/firebase';
 import type { AppUser, ModalContent, CalendarEvent, StudyPlan, ChatMessage, ChatHistory } from '../../types';
@@ -118,11 +119,7 @@ const ChatBubble: React.FC<{
     return (
         <div className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
             {msg.role === 'model' && (
-                (user.aiBotName?.toLowerCase() === 'mimi') ? (
-                    <img src="https://i.imgur.com/8b2I3vE.png" alt="Mimi" className="w-8 h-8 rounded-full"/>
-                ) : (
-                    <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white ${getThemeClasses('bg')}`}><Bot size={20}/></div>
-                )
+                <img src="https://i.imgur.com/Lsutr8n.png" alt="Studycat" className="w-8 h-8 rounded-full"/>
             )}
             <div
                 className={`prose max-w-xs p-3 rounded-xl ${msg.role === 'model' ? 'bg-gray-100' : `${getThemeClasses('bg')} text-white`}`}
@@ -153,6 +150,15 @@ const AIChatView: React.FC<AIChatViewProps> = ({
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, isLoading]);
+
+    // Ensure a welcome message appears when chat opens and there are no messages yet
+    useEffect(() => {
+        if (messages.length === 0) {
+            setMessages([{ role: 'model', text: t('ai_chat_welcome', { userName: user.userName.split(' ')[0], botName: user.aiBotName || 'Studycat' }) }]);
+        }
+        // run once on mount
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const generateTitleForChat = useCallback(async (chatMessages: ChatMessage[]): Promise<string> => {
         if (!process.env.API_KEY) return t('new_chat');
@@ -186,18 +192,25 @@ const AIChatView: React.FC<AIChatViewProps> = ({
     }, [t]);
     
     const handleSend = async () => {
-        if (!input.trim() || !chat || isLoading) return;
+        if (!input.trim() || isLoading) return;
 
         const userMessage: ChatMessage = { role: 'user', text: input };
         setMessages(prev => [...prev, userMessage]);
         setInput('');
+
+        // If chat is not configured (likely missing API key), reply with guidance
+        if (!chat) {
+            setMessages(prev => [...prev, { role: 'model', text: t('ai_chat_welcome', { userName: user.userName.split(' ')[0], botName: user.aiBotName || 'Studycat' }) + '\n\n' + (user.languagePreference === 'nl' ? 'AI is nog niet geconfigureerd. Voeg je Gemini API key toe om deze functie te gebruiken (README stap: GEMINI_API_KEY in .env.local).' : 'AI is not configured yet. Add your Gemini API key to enable this feature (README step: set GEMINI_API_KEY in .env.local).') }]);
+            return;
+        }
+
         setIsLoading(true);
 
         try {
             let response: GenerateContentResponse = await chat.sendMessage({ message: userMessage.text });
 
             while (response.functionCalls && response.functionCalls.length > 0) {
-                const functionResponses = [];
+                const functionResponseParts: Part[] = [];
                 for (const funcCall of response.functionCalls) {
                     let result: any;
                     switch (funcCall.name) {
@@ -236,9 +249,14 @@ const AIChatView: React.FC<AIChatViewProps> = ({
                         }
                         default: result = { error: "Unknown function" };
                     }
-                    functionResponses.push({ id: funcCall.id, name: funcCall.name, response: { result } });
+                     functionResponseParts.push({
+                        functionResponse: {
+                            name: funcCall.name,
+                            response: { result: result },
+                        },
+                    });
                 }
-                response = await chat.sendMessage({ functionResponses });
+                response = await chat.sendMessage({ message: functionResponseParts });
             }
             
             setIsLoading(false);

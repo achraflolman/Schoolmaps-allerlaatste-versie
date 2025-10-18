@@ -11,7 +11,7 @@ interface TypingWelcomeViewProps {
 
 const TypingWelcomeView: React.FC<TypingWelcomeViewProps> = ({ onContinue, t, getThemeClasses, triggerHapticFeedback }) => {
     const [text, setText] = useState('');
-    const fullText = "Heey! Ik ben Mimi, jouw studiemaatje bij StudyBox 😸";
+    const fullText = "Heey! Ik ben Studycat, jouw studiemaatje bij StudyBox 😸";
 
     useEffect(() => {
         let index = 0;

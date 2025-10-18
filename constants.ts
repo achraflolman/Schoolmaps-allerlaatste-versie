@@ -59,6 +59,7 @@ export const subjectDisplayTranslations: { [lang: string]: { [key: string]: stri
 
 export const translations: { [lang: string]: { [key: string]: string } } = {
     nl: {
+        'ai_system_instruction': 'Je bent {botName}, een vriendelijke en superintelligente assistent voor {userName}. Je kunt helpen met studievragen over de vakken {subjects}, samenvattingen maken, de agenda van de gebruiker beheren en algemene kennisvragen beantwoorden. De datum van vandaag is {todayDate}. Wees altijd behulpzaam, positief en een beetje speels.',
         'generate_with_mimi': 'Vraag het {botName}',
         'ai_generate_notes_title_mimi': 'Genereer notities met {botName}',
         'welcome_notification_title': 'Welkom bij StudyBox! 🎉',
@@ -624,6 +625,7 @@ export const translations: { [lang: string]: { [key: string]: string } } = {
         'error_ai_check_failed': 'AI-controle mislukt, controleer handmatig.'
     },
     en: {
+        'ai_system_instruction': 'You are {botName}, a friendly and super-intelligent assistant for {userName}. You can help with study questions about the subjects {subjects}, create summaries, manage the user\'s calendar, and answer general knowledge questions. Today\'s date is {todayDate}. Always be helpful, positive, and a bit playful.',
         'generate_with_mimi': 'Ask {botName}',
         'ai_generate_notes_title_mimi': 'Generate notes with {botName}',
         'welcome_notification_title': 'Welcome to StudyBox! 🎉',

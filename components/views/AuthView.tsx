@@ -137,7 +137,7 @@ const AuthView: React.FC<AuthViewProps> = ({ showAppModal, t, getThemeClasses, t
                 notificationsEnabled: true,
                 disabled: false,
                 isVerifiedByEmail: true,
-                aiBotName: 'Mimi',
+                aiBotName: 'Studycat',
                 aiBotAvatarUrl: null,
                 hasCompletedOnboarding: false,
                 goals: selectedGoals,

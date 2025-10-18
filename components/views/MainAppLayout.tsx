@@ -126,7 +126,7 @@ const MainAppLayout: React.FC<{
         setIsChatOpen(false);
         // Reset to a new chat session state
         setCurrentChatSessionId(null);
-        setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome', { userName: user.userName.split(' ')[0], botName: user.aiBotName || 'AI Assistant' }) }]);
+        setAiChatMessages([{ role: 'model', text: t('ai_chat_welcome', { userName: user.userName.split(' ')[0], botName: user.aiBotName || 'Studycat' }) }]);
     };
 
     // Sidebar Click-outside Handler remains here as it's UI-specific to the layout

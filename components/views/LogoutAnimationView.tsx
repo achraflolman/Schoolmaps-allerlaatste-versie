@@ -37,7 +37,7 @@ const LogoutAnimationView: React.FC<LogoutAnimationViewProps> = ({ getThemeClass
       <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 max-w-md w-full text-center flex flex-col justify-center" style={{ minHeight: '420px' }}>
         <div className="w-40 h-40 mx-auto rounded-full overflow-hidden shadow-lg border-4 border-white bg-blue-100 flex items-center justify-center">
           <img
-            src="https://i.imgur.com/Lsutr8n.png"
+            src="https://i.imgur.com/utgQioy.png"
             alt="Logout Robot"
             className="w-full h-full object-cover p-2"
           />
